@@ -14,7 +14,7 @@ require_once __DIR__ . '/../lib/ai.php';
 const ALLOWED_SETTING_KEYS = [
     'theme', 'base_currency', 'owner_name', 'github_username', 'github_token',
     'stale_repo_days', 'ai_enabled', 'ai_provider', 'claude_api_key', 'claude_model',
-    'ollama_base_url', 'ollama_model',
+    'ollama_base_url', 'ollama_model', 'dashboard_shortcuts',
 ];
 
 /** Keys whose values are secrets — masked on read, kept if unchanged on save. */

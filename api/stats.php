@@ -81,10 +81,16 @@ function dashboard_payload(int $uid): array
     $activity = $pdo->prepare('SELECT * FROM activity_log WHERE user_id=? ORDER BY created_at DESC, id DESC LIMIT 8');
     $activity->execute([$uid]);
 
+    $shortcuts = json_decode((string) get_setting($uid, 'dashboard_shortcuts', '[]'), true);
+    if (!is_array($shortcuts)) {
+        $shortcuts = [];
+    }
+
     return [
         'owner_name'  => (string) (get_setting($uid, 'owner_name', '') ?: (current_user()['display_name'] ?? '')),
         'currency'    => (string) (get_setting($uid, 'base_currency', 'TRY') ?: 'TRY'),
         'ai_enabled'  => (get_setting($uid, 'ai_enabled', '0') === '1'),
+        'shortcuts'   => array_values($shortcuts),
         'todos'       => $todos->fetchAll(),
         'habits'      => $habits->fetchAll(),
         'money'       => [

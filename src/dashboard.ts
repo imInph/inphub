@@ -3,8 +3,12 @@
  */
 
 import { apiGet, apiPost } from './api.js';
-import { escapeHtml, money, fmtDate, timeAgo, markdown, emptyState, toast, onAction } from './ui.js';
+import {
+  escapeHtml, money, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues,
+} from './ui.js';
 import { go, aiAvailable } from './app.js';
+
+interface Shortcut { name: string; url: string; }
 
 interface DashTodo { id: number; title: string; priority: string; due_date: string | null; }
 interface DashHabit { id: number; name: string; logged_today: number; }
@@ -21,17 +25,25 @@ interface DashData {
   repos: { stale_count: number; most_neglected: { name: string; full_name: string; staleness_days: number | null; health_score: number | null } | null };
   goals: DashGoal[];
   activity: DashActivity[];
+  shortcuts: Shortcut[];
 }
+
+let shortcuts: Shortcut[] = [];
 
 export async function renderDashboard(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div class="empty">Loading…</div>`;
   const d = await apiGet<DashData>('stats', 'dashboard');
   const cur = d.currency || 'TRY';
 
+  shortcuts = Array.isArray(d.shortcuts) ? d.shortcuts : [];
+
   container.innerHTML = `
     <div class="view-head"><h2>Dashboard</h2>
       <div class="toolbar"><span class="chip">${escapeHtml(d.money.month)}</span></div>
     </div>
+    <form class="dash-search" action="https://www.google.com/search" method="get" target="_self">
+      <input type="text" name="q" placeholder="Search Google…" autocomplete="off" spellcheck="false" data-role="search">
+    </form>
     ${aiAvailable ? '<div data-role="brief" style="margin-bottom:16px"></div>' : ''}
     <div class="grid grid-dash">
       ${cardTodos(d.todos)}
@@ -40,15 +52,90 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
       ${cardRepos(d.repos)}
       ${cardGoals(d.goals)}
       ${cardActivity(d.activity)}
-    </div>`;
+    </div>
+    <section style="margin-top:20px">
+      <div class="view-head" style="margin-bottom:12px">
+        <h3 style="margin:0">Shortcuts</h3>
+        <button class="btn btn-sm" data-action="add-shortcut">+ Add site</button>
+      </div>
+      <div class="shortcuts" data-role="shortcuts">${renderShortcuts()}</div>
+    </section>`;
 
-  onAction(container, (action, el) => {
+  onAction(container, (action, el, ev) => {
     if (action === 'goto') go(el.dataset.view!);
     if (action === 'toggle-habit') toggleHabit(container, Number(el.dataset.id));
     if (action === 'gen-brief') generateBrief(container);
+    if (action === 'add-shortcut') addShortcut(container);
+    if (action === 'del-shortcut') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      removeShortcut(container, Number(el.dataset.idx));
+    }
   });
 
   if (aiAvailable) loadBrief(container);
+}
+
+/* -------------------------------------------------------------- shortcuts */
+
+function renderShortcuts(): string {
+  const tiles = shortcuts.map((s, i) => {
+    let host = '';
+    try {
+      host = new URL(s.url).hostname;
+    } catch {
+      host = '';
+    }
+    const fav = host
+      ? `<span class="fav"><img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64"
+           alt="" onerror="this.remove()"></span>`
+      : `<span class="fav">${escapeHtml((s.name[0] || '?').toUpperCase())}</span>`;
+    return `<a class="shortcut" href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.url)}">
+      ${fav}
+      <span class="sc-name">${escapeHtml(s.name)}</span>
+      <button class="shortcut-del" data-action="del-shortcut" data-idx="${i}" title="Remove">✕</button>
+    </a>`;
+  });
+  tiles.push(`<button class="shortcut shortcut-add" data-action="add-shortcut" title="Add shortcut">＋</button>`);
+  return tiles.join('');
+}
+
+function addShortcut(container: HTMLElement): void {
+  openModal({
+    title: 'Add shortcut',
+    confirmLabel: 'Add',
+    bodyHtml: `
+      <label><span>Name</span><input name="name" placeholder="GitHub" autocomplete="off"></label>
+      <label><span>URL</span><input name="url" placeholder="github.com" autocomplete="off"></label>`,
+    onConfirm: async (root) => {
+      const v = formValues(root);
+      const name = v.name.trim();
+      let url = v.url.trim();
+      if (!name || !url) {
+        toast('Name and URL are required.', 'bad');
+        return false;
+      }
+      if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+      shortcuts.push({ name, url });
+      await saveShortcuts(container);
+    },
+  });
+}
+
+async function removeShortcut(container: HTMLElement, idx: number): Promise<void> {
+  if (idx < 0 || idx >= shortcuts.length) return;
+  shortcuts.splice(idx, 1);
+  await saveShortcuts(container);
+}
+
+async function saveShortcuts(container: HTMLElement): Promise<void> {
+  const host = container.querySelector<HTMLElement>('[data-role="shortcuts"]');
+  if (host) host.innerHTML = renderShortcuts();
+  try {
+    await apiPost('settings', 'save', { settings: { dashboard_shortcuts: JSON.stringify(shortcuts) } });
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Could not save shortcuts', 'bad');
+  }
 }
 
 async function loadBrief(container: HTMLElement): Promise<void> {
