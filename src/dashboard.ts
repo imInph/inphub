@@ -66,6 +66,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
     if (action === 'goto') go(el.dataset.view!);
     if (action === 'toggle-habit') toggleHabit(container, Number(el.dataset.id));
     if (action === 'gen-brief') generateBrief(container);
+    if (action === 'clear-brief') clearBrief(container);
     if (action === 'add-shortcut') addShortcut(container);
     if (action === 'del-shortcut') {
       ev.preventDefault();
@@ -155,15 +156,31 @@ async function loadBrief(container: HTMLElement): Promise<void> {
 function briefCard(content: string | null): string {
   return `<section class="card">
     <div class="card-head"><h3>Daily brief</h3>
-      <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? '↻ Regenerate' : '✨ Generate'}</button>
+      <span>
+        ${content ? '<button class="btn btn-ghost btn-sm" data-action="clear-brief">Clear</button>' : ''}
+        <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? '↻ Regenerate' : '✨ Generate'}</button>
+      </span>
     </div>
     ${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">Generate an AI summary of your day.</div>'}
   </section>`;
 }
 
+async function clearBrief(container: HTMLElement): Promise<void> {
+  try {
+    await apiPost('ai', 'clear_brief', {});
+    loadBrief(container); // re-renders as the empty "Generate" state
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Failed', 'bad');
+  }
+}
+
+let briefBusy = false;
+
 async function generateBrief(container: HTMLElement): Promise<void> {
   const host = container.querySelector<HTMLElement>('[data-role="brief"]');
-  if (!host) return;
+  if (!host || briefBusy) return; // guard: exactly one request in flight
+  briefBusy = true;
+  host.querySelector<HTMLButtonElement>('[data-action="gen-brief"]')?.setAttribute('disabled', '');
   host.querySelector('.md, .text-dim')?.replaceChildren();
   host.querySelector('.card-head')?.insertAdjacentHTML('afterend', '<div class="text-dim" data-role="thinking">Thinking…</div>');
   try {
@@ -172,6 +189,8 @@ async function generateBrief(container: HTMLElement): Promise<void> {
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Failed', 'bad');
     loadBrief(container);
+  } finally {
+    briefBusy = false;
   }
 }
 
@@ -252,7 +271,7 @@ function cardGoals(goals: DashGoal[]): string {
 
 function cardActivity(items: DashActivity[]): string {
   const body = items.length
-    ? `<div class="list" style="max-height:260px;overflow-y:auto">${items.map((a) => `
+    ? `<div class="list">${items.map((a) => `
         <div class="row" style="border:none;padding:4px 0;background:none">
           <span class="grow">${escapeHtml(a.summary)}</span>
           <span class="muted">${a.actor === 'ai' ? '🤖 ' : ''}${escapeHtml(timeAgo(a.created_at))}</span>
@@ -264,10 +283,11 @@ function cardActivity(items: DashActivity[]): string {
 /* ---------------------------------------------------------------- helpers */
 
 function card(title: string, view: string, body: string): string {
+  // The header stays put; only .card-scroll (the content) caps + scrolls (5.1).
   return `<section class="card">
     <div class="card-head"><h3>${escapeHtml(title)}</h3>
       <button class="btn btn-ghost btn-sm" data-action="goto" data-view="${escapeHtml(view)}">Open →</button></div>
-    ${body}
+    <div class="card-scroll">${body}</div>
   </section>`;
 }
 

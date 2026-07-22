@@ -80,9 +80,14 @@ export async function renderSettings(container) {
       <button type="button" class="btn btn-ghost btn-sm" data-role="egg" title="?">🐣</button>
     </div>`;
     const form = container.querySelector('[data-role="form"]');
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        save(container, form);
+        const saved = await save(container, form);
+        // Toggling AI on/off changes what's gated app-wide (chat, brief, weekly
+        // review, palette). aiAvailable is set at boot, so reload to re-evaluate it.
+        const nowOn = form.querySelector('[name="ai_enabled"]').checked;
+        if (saved && nowOn !== aiOn)
+            location.reload();
     });
     container.querySelector('[data-role="test-ai"]').addEventListener('click', () => testAi(container));
     container.querySelector('[data-role="weekly"]')?.addEventListener('click', () => weeklyReview(container));
@@ -128,9 +133,11 @@ async function save(container, form) {
         toast('Settings saved.', 'good');
         if (v.theme)
             document.documentElement.setAttribute('data-theme', v.theme);
+        return true;
     }
     catch (e) {
         toast(e instanceof Error ? e.message : 'Save failed', 'bad');
+        return false;
     }
 }
 async function testAi(container) {

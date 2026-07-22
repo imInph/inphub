@@ -98,9 +98,13 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     </div>`;
 
   const form = container.querySelector<HTMLFormElement>('[data-role="form"]')!;
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    save(container, form);
+    const saved = await save(container, form);
+    // Toggling AI on/off changes what's gated app-wide (chat, brief, weekly
+    // review, palette). aiAvailable is set at boot, so reload to re-evaluate it.
+    const nowOn = form.querySelector<HTMLInputElement>('[name="ai_enabled"]')!.checked;
+    if (saved && nowOn !== aiOn) location.reload();
   });
 
   container.querySelector<HTMLButtonElement>('[data-role="test-ai"]')!.addEventListener('click', () => testAi(container));
@@ -140,7 +144,7 @@ async function weeklyReview(container: HTMLElement): Promise<void> {
   }
 }
 
-async function save(container: HTMLElement, form: HTMLFormElement): Promise<void> {
+async function save(container: HTMLElement, form: HTMLFormElement): Promise<boolean> {
   const v = formValues(form);
   // Drop unchanged secret masks so the stored values survive (backend also guards this).
   if (v.github_token === SECRET_UNCHANGED) delete (v as Record<string, unknown>).github_token;
@@ -149,8 +153,10 @@ async function save(container: HTMLElement, form: HTMLFormElement): Promise<void
     await apiPost('settings', 'save', { settings: v });
     toast('Settings saved.', 'good');
     if (v.theme) document.documentElement.setAttribute('data-theme', v.theme);
+    return true;
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Save failed', 'bad');
+    return false;
   }
 }
 

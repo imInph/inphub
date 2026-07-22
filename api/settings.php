@@ -58,6 +58,10 @@ api_handle(function (): void {
                 set_setting($uid, $key, $value === null ? '' : (string) $value);
                 $saved[] = $key;
             }
+            // Turning AI off clears any stored daily brief so nothing AI-generated lingers.
+            if (array_key_exists('ai_enabled', $settings) && (string) $settings['ai_enabled'] === '0') {
+                db()->prepare('DELETE FROM daily_briefs WHERE user_id=?')->execute([$uid]);
+            }
             ok(['saved' => $saved]);
             break;
         }

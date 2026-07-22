@@ -11,6 +11,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../lib/auth.php';
+require_once __DIR__ . '/../lib/ai.php';
 auth_boot();
 require_login_page();
 
@@ -18,6 +19,9 @@ $user  = current_user();
 $uid   = (int) $user['id'];
 $theme = (string) (get_setting($uid, 'theme', 'dark') ?: 'dark');
 $isAdmin = $user['role'] === 'admin';
+// AI widgets are gated server-side: when AI is off they are never emitted (not
+// merely CSS-hidden), and every api/ai.php endpoint rejects with 403 as well.
+$aiOn  = ai_available($uid);
 
 $boot = [
     'user'  => ['id' => $uid, 'username' => $user['username'], 'display_name' => $user['display_name'], 'role' => $user['role']],
@@ -70,16 +74,20 @@ $nav = [
                 <?php endforeach; ?>
             </nav>
             <div class="sidebar-foot">
-                <button class="btn btn-ghost" id="btn-chat" hidden>💬 Chat</button>
+                <?php if ($aiOn): ?><button class="btn btn-ghost" id="btn-chat">💬 Chat</button><?php endif; ?>
                 <button class="btn btn-ghost" id="btn-palette" title="Ctrl/Cmd+K">⌘K</button>
                 <a class="btn btn-ghost" href="logout.php">Log out</a>
             </div>
         </aside>
 
+        <!-- Scrim behind the mobile nav drawer -->
+        <div id="nav-scrim" class="nav-scrim"></div>
+
         <!-- Main -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
+                    <button class="btn btn-ghost menu-toggle" id="btn-menu" aria-label="Menu">☰</button>
                     <div id="greeting" class="greeting"></div>
                 </div>
                 <div class="topbar-right">

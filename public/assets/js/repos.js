@@ -11,7 +11,7 @@ export async function renderRepos(container) {
     <div class="view-head">
       <h2>Repositories</h2>
       <div class="toolbar">
-        ${aiAvailable ? '<button class="btn" data-action="analyze-stale">✨ Analyze stale</button>' : ''}
+        ${aiAvailable ? '<button class="btn" data-action="analyze-stale" title="Generate AI improvement suggestions for every stale repo. Results appear in each repo\'s Details.">✨ Analyze stale</button>' : ''}
         <button class="btn btn-primary" data-action="sync">↻ Sync from GitHub</button>
       </div>
     </div>
@@ -175,7 +175,9 @@ async function analyzeStale(container) {
     }
     try {
         const res = await apiPost('ai', 'analyze_stale', {});
-        toast(`Analyzed ${res.analyzed} stale repos.`, 'good');
+        toast(res.analyzed
+            ? `Analyzed ${res.analyzed} stale repos — open a repo's Details to see suggestions.`
+            : 'No stale repos to analyze.', 'good');
     }
     catch (e) {
         toast(e instanceof Error ? e.message : 'Failed', 'bad');

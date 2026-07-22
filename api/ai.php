@@ -3,17 +3,21 @@
  * inphub — AI features (all gated on ai_available()).
  *
  *   GET  ?action=status                          { available }
+ *   GET  ?action=models                          models offered by the provider
  *   GET  ?action=brief                           today's cached brief (or null)
  *   POST ?action=generate_brief                  (re)generate today's brief
- *   GET  ?action=chat_history                    recent chat turns
- *   POST ?action=chat            { message }      reply + any executed actions
- *   POST ?action=clear_chat                      wipe the default session
+ *   POST ?action=clear_brief                     delete today's stored brief
+ *   GET  ?action=chat_sessions                   list past conversations
+ *   GET  ?action=chat_history    { session? }    turns in one conversation
+ *   POST ?action=chat            { message, session?, model? }  reply + actions
+ *   POST ?action=clear_chat      { session? }    delete one conversation
  *   POST ?action=analyze_repo    { repo_id }     produce repo_suggestions
  *   POST ?action=analyze_stale                   analyze every stale repo
  *   POST ?action=quick_add       { text }        classify free text → the right table
  *   GET  ?action=weekly_review                   summarise the last 7 days
  *
- * quick_add is the only action that also works with AI off (prefix parsing).
+ * Every action except status and quick_add requires AI to be enabled
+ * (ai_gate → 403). quick_add also works with AI off (prefix parsing).
  */
 
 require_once __DIR__ . '/_bootstrap.php';
@@ -28,7 +32,13 @@ api_handle(function (): void {
             ok(['available' => ai_available($uid)]);
             break;
 
+        case 'models':
+            ai_gate($uid);
+            ok(ai_list_models($uid));
+            break;
+
         case 'brief': {
+            ai_gate($uid);
             $stmt = db()->prepare('SELECT * FROM daily_briefs WHERE user_id=? AND brief_date=CURRENT_DATE');
             $stmt->execute([$uid]);
             ok(['brief' => $stmt->fetch() ?: null]);
@@ -40,24 +50,44 @@ api_handle(function (): void {
             ok(['brief' => generate_brief($uid)]);
             break;
 
+        case 'clear_brief': {
+            ai_gate($uid);
+            db()->prepare('DELETE FROM daily_briefs WHERE user_id=? AND brief_date=CURRENT_DATE')->execute([$uid]);
+            ok(['cleared' => true]);
+            break;
+        }
+
+        case 'chat_sessions':
+            ai_gate($uid);
+            ok(['sessions' => chat_sessions($uid)]);
+            break;
+
         case 'chat_history': {
+            ai_gate($uid);
+            $session = chat_session(input_get($input, 'session'));
             $stmt = db()->prepare(
                 "SELECT id, role, content, actions, created_at FROM chat_messages
-                 WHERE user_id=? AND session_id='default' ORDER BY id ASC LIMIT 100"
+                 WHERE user_id=? AND session_id=? ORDER BY id ASC LIMIT 100"
             );
-            $stmt->execute([$uid]);
-            ok(['messages' => $stmt->fetchAll()]);
+            $stmt->execute([$uid, $session]);
+            ok(['messages' => $stmt->fetchAll(), 'session' => $session]);
             break;
         }
 
         case 'chat':
             ai_gate($uid);
-            ok(chat_turn($uid, (string) (str_or_null(input_get($input, 'message')) ?? '')));
+            ok(chat_turn(
+                $uid,
+                (string) (str_or_null(input_get($input, 'message')) ?? ''),
+                chat_session(input_get($input, 'session')),
+                str_or_null(input_get($input, 'model'))
+            ));
             break;
 
         case 'clear_chat': {
-            $stmt = db()->prepare("DELETE FROM chat_messages WHERE user_id=? AND session_id='default'");
-            $stmt->execute([$uid]);
+            ai_gate($uid);
+            $session = chat_session(input_get($input, 'session'));
+            db()->prepare('DELETE FROM chat_messages WHERE user_id=? AND session_id=?')->execute([$uid, $session]);
             ok(['cleared' => true]);
             break;
         }
@@ -96,12 +126,25 @@ api_handle(function (): void {
     }
 });
 
-/** Stop with a clean 400 if AI is not configured/enabled. */
+/** Stop with a clean 403 if AI is not configured/enabled. */
 function ai_gate(int $uid): void
 {
     if (!ai_available($uid)) {
-        fail('AI is disabled. Enable it and configure a provider in Settings.', 400);
+        fail('AI is disabled. Enable it and configure a provider in Settings.', 403);
     }
+}
+
+/**
+ * Normalise a chat session id from client input. Falls back to 'default' and
+ * only allows a safe id charset that fits the session_id column.
+ */
+function chat_session($raw): string
+{
+    $s = is_string($raw) ? trim($raw) : '';
+    if ($s === '' || !preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $s)) {
+        return 'default';
+    }
+    return $s;
 }
 
 /* ============================================================ daily brief */
@@ -200,17 +243,21 @@ function brief_context(int $uid): string
 
 const CHAT_ACTIONS = ['add_todo', 'complete_todo', 'add_expense', 'log_habit', 'add_note', 'update_goal_progress', 'add_repo_suggestion'];
 
-function chat_turn(int $uid, string $message): array
+function chat_turn(int $uid, string $message, string $session = 'default', ?string $model = null): array
 {
     if ($message === '') {
         fail('Empty message.', 422);
     }
 
-    save_chat($uid, 'user', $message, null);
+    save_chat($uid, 'user', $message, null, $session);
 
-    $system = chat_system_prompt($uid);
-    $history = recent_chat_text($uid);
-    $reply   = ai_generate($uid, $system, $history, ['max_tokens' => 1024]);
+    $system  = chat_system_prompt($uid);
+    $history = recent_chat_text($uid, $session);
+    $opts    = ['max_tokens' => 1024];
+    if ($model !== null && $model !== '') {
+        $opts['model'] = $model; // per-session model; never written to settings
+    }
+    $reply = ai_generate($uid, $system, $history, $opts);
 
     // Parse an optional trailing ```json { "actions": [...] } ``` block.
     [$clean, $actions] = split_actions($reply);
@@ -226,13 +273,73 @@ function chat_turn(int $uid, string $message): array
         }
     }
 
-    save_chat($uid, 'assistant', $clean, $executed ?: null);
-    return ['reply' => $clean, 'actions' => $executed];
+    save_chat($uid, 'assistant', $clean, $executed ?: null, $session);
+    return ['reply' => $clean, 'actions' => $executed, 'session' => $session];
+}
+
+/**
+ * List the user's conversations (grouped by session_id), newest first. The
+ * title is derived from the first user message in each session.
+ */
+function chat_sessions(int $uid): array
+{
+    $stmt = db()->prepare(
+        "SELECT cm.session_id,
+                MAX(cm.created_at) AS last_at,
+                COUNT(*)           AS turns,
+                (SELECT content FROM chat_messages m2
+                  WHERE m2.user_id=cm.user_id AND m2.session_id=cm.session_id AND m2.role='user'
+                  ORDER BY m2.id ASC LIMIT 1) AS title
+         FROM chat_messages cm
+         WHERE cm.user_id=?
+         GROUP BY cm.session_id
+         ORDER BY last_at DESC LIMIT 50"
+    );
+    $stmt->execute([$uid]);
+
+    $out = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $title = trim((string) ($r['title'] ?? ''));
+        if ($title === '') {
+            $title = 'New chat';
+        } elseif (mb_strlen($title) > 48) {
+            $title = mb_substr($title, 0, 48) . '…';
+        }
+        $out[] = [
+            'session_id' => $r['session_id'],
+            'title'      => $title,
+            'last_at'    => $r['last_at'],
+            'turns'      => (int) $r['turns'],
+        ];
+    }
+    return $out;
 }
 
 function chat_system_prompt(int $uid): string
 {
     $snapshot = brief_context($uid);
+    $user     = current_user();
+    $username = (string) ($user['username'] ?? '');
+    $who      = $username !== '' ? $username : 'the owner';
+
+    $identity = <<<TXT
+inphub is a single-user, self-hosted personal life dashboard, built and maintained by one person
+for their own use. There is no company behind it, no support team, no ticketing system, no other
+staff, and no product policies or pricing. Never offer to "escalate", "contact support", "open a
+ticket", "reach out to the team", or similar — none of that exists. If asked who runs or supports
+it, say plainly that it is a personal project maintained by its owner. Never invent features,
+policies, or people that are not in the data you are given.
+
+You are talking to {$who}.
+TXT;
+
+    // Developer mode: the sole owner/developer account gets a technical, direct assistant.
+    if ($username === 'imInph') {
+        $identity .= "\n\nThis user, imInph, is the sole developer and owner of inphub. Be technical and "
+            . "direct: discuss implementation details, the database schema, and code freely. Skip "
+            . "end-user hand-holding, marketing tone, and disclaimers.";
+    }
+
     $tools = <<<TXT
 You can take actions on the user's data. When (and only when) the user asks you to change something,
 append a single fenced code block at the very end of your reply, exactly like:
@@ -254,18 +361,18 @@ Only include the JSON block when you actually performed an action; otherwise omi
 Keep the conversational part short and friendly. Never invent ids — use ones present in the snapshot.
 TXT;
 
-    return "You are the assistant inside 'inphub', a personal life dashboard. "
+    return "You are the assistant inside 'inphub', a personal life dashboard.\n\n{$identity}\n\n"
         . "Here is a snapshot of the user's current data:\n\n{$snapshot}\n\n{$tools}";
 }
 
 /** Recent conversation flattened to a single prompt string. */
-function recent_chat_text(int $uid): string
+function recent_chat_text(int $uid, string $session = 'default'): string
 {
     $stmt = db()->prepare(
-        "SELECT role, content FROM chat_messages WHERE user_id=? AND session_id='default'
+        "SELECT role, content FROM chat_messages WHERE user_id=? AND session_id=?
          ORDER BY id DESC LIMIT 12"
     );
-    $stmt->execute([$uid]);
+    $stmt->execute([$uid, $session]);
     $rows = array_reverse($stmt->fetchAll());
     $out = [];
     foreach ($rows as $r) {
@@ -275,13 +382,13 @@ function recent_chat_text(int $uid): string
     return implode("\n\n", $out);
 }
 
-function save_chat(int $uid, string $role, string $content, ?array $actions): void
+function save_chat(int $uid, string $role, string $content, ?array $actions, string $session = 'default'): void
 {
     $stmt = db()->prepare(
         "INSERT INTO chat_messages (user_id, session_id, role, content, actions)
-         VALUES (?, 'default', ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?)"
     );
-    $stmt->execute([$uid, $role, $content, $actions !== null ? json_encode($actions, JSON_UNESCAPED_UNICODE) : null]);
+    $stmt->execute([$uid, $session, $role, $content, $actions !== null ? json_encode($actions, JSON_UNESCAPED_UNICODE) : null]);
 }
 
 /**

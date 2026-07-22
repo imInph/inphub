@@ -42,6 +42,7 @@ function viewFromHash() {
 }
 async function activate(view) {
     currentView = view;
+    closeNav();
     document.querySelectorAll('.nav-item').forEach((el) => {
         el.classList.toggle('active', el.dataset.view === view);
     });
@@ -68,6 +69,10 @@ function onRoute() {
 export function go(view) {
     if (VIEWS[view])
         location.hash = view;
+}
+/** Close the mobile nav drawer if open. */
+function closeNav() {
+    document.body.classList.remove('nav-open');
 }
 /** Whether the AI layer is configured — set once at boot. */
 export let aiAvailable = false;
@@ -182,9 +187,15 @@ function init() {
     tick();
     setInterval(tick, 1000);
     document.getElementById('btn-theme')?.addEventListener('click', toggleTheme);
+    // Mobile nav drawer: hamburger toggles it; scrim or a nav choice closes it.
+    document.getElementById('btn-menu')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+    document.getElementById('nav-scrim')?.addEventListener('click', closeNav);
     document.querySelectorAll('.nav-item').forEach((el) => {
         // Anchors already set location.hash; nothing extra needed, but keep focus tidy.
-        el.addEventListener('click', () => el.blur());
+        el.addEventListener('click', () => {
+            el.blur();
+            closeNav();
+        });
     });
     window.addEventListener('hashchange', onRoute);
     document.addEventListener('keydown', onKey);

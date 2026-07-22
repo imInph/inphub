@@ -3,6 +3,7 @@
  * inphub — todos CRUD.
  *
  *   GET  ?action=list[&status=&project=]
+ *   GET  ?action=history                 todos bucketed by ISO week (Mon–Sun)
  *   POST ?action=create   { title, description?, status?, priority?, project?, tags?, due_date?, recurring? }
  *   POST ?action=update   { id, ...fields }
  *   POST ?action=complete { id }
@@ -34,6 +35,10 @@ api_handle(function (): void {
             ok($stmt->fetchAll());
             break;
         }
+
+        case 'history':
+            ok(todos_history($uid));
+            break;
 
         case 'create': {
             $title = str_or_null(input_get($input, 'title'));
@@ -130,6 +135,110 @@ api_handle(function (): void {
             fail('Unknown action.', 404);
     }
 });
+
+/**
+ * Todos bucketed by ISO week (Monday–Sunday), newest week first, over the last
+ * 8 weeks. Nothing is deleted or moved in the DB — this is a display bucketing:
+ *  - a completed task appears in the week it was completed;
+ *  - an open task appears in the CURRENT week (active — "carried" if it began
+ *    earlier) AND stays visible in the past week it was created.
+ */
+function todos_history(int $uid): array
+{
+    $weeksBack     = 8;
+    $today         = new DateTimeImmutable('today');
+    $dow           = (int) $today->format('N');               // 1=Mon … 7=Sun
+    $currentMonday = $today->modify('-' . ($dow - 1) . ' days');
+    $windowStart   = $currentMonday->modify('-' . (($weeksBack - 1) * 7) . ' days');
+    $curKey        = $currentMonday->format('Y-m-d');
+
+    // Prepare empty buckets, current week first.
+    $buckets = [];
+    for ($i = 0; $i < $weeksBack; $i++) {
+        $mon = $currentMonday->modify('-' . ($i * 7) . ' days');
+        $buckets[$mon->format('Y-m-d')] = [
+            'week_start' => $mon->format('Y-m-d'),
+            'week_end'   => $mon->modify('+6 days')->format('Y-m-d'),
+            'items'      => [],
+            '_ids'       => [],
+        ];
+    }
+
+    $stmt = db()->prepare(
+        "SELECT id, title, status, priority, created_at, completed_at, due_date
+         FROM todos
+         WHERE user_id = ?
+           AND ( status IN ('todo','in_progress')
+                 OR (completed_at IS NOT NULL AND completed_at >= ?)
+                 OR created_at >= ? )
+         ORDER BY created_at ASC"
+    );
+    $ws = $windowStart->format('Y-m-d 00:00:00');
+    $stmt->execute([$uid, $ws, $ws]);
+
+    foreach ($stmt->fetchAll() as $r) {
+        if ($r['status'] === 'archived') {
+            continue;
+        }
+        if ($r['status'] === 'done') {
+            $k = week_monday_key((string) $r['completed_at']);
+            if ($k !== null && isset($buckets[$k])) {
+                history_add($buckets[$k], $r, 'done');
+            }
+            continue;
+        }
+        // Open task: always active in the current week…
+        $createdKey = week_monday_key((string) $r['created_at']);
+        history_add($buckets[$curKey], $r, $createdKey === $curKey ? 'open' : 'carried');
+        // …and still visible in the past week it originated in.
+        if ($createdKey !== null && $createdKey !== $curKey && isset($buckets[$createdKey])) {
+            history_add($buckets[$createdKey], $r, 'open');
+        }
+    }
+
+    $weeks = [];
+    foreach ($buckets as $key => $b) {
+        unset($b['_ids']);
+        if ($b['items'] || $key === $curKey) {
+            $weeks[] = $b;
+        }
+    }
+    return ['weeks' => $weeks, 'current_week_start' => $curKey];
+}
+
+/** Monday (Y-m-d) of the ISO week containing a datetime string, or null. */
+function week_monday_key(string $datetime): ?string
+{
+    $date = substr(trim($datetime), 0, 10);
+    if ($date === '') {
+        return null;
+    }
+    $d = DateTimeImmutable::createFromFormat('Y-m-d', $date);
+    if ($d === false) {
+        return null;
+    }
+    $dow = (int) $d->format('N');
+    return $d->modify('-' . ($dow - 1) . ' days')->format('Y-m-d');
+}
+
+/** Append a todo to a week bucket once (deduped by id). */
+function history_add(array &$bucket, array $r, string $state): void
+{
+    $id = (int) $r['id'];
+    if (isset($bucket['_ids'][$id])) {
+        return;
+    }
+    $bucket['_ids'][$id] = true;
+    $bucket['items'][] = [
+        'id'           => $id,
+        'title'        => $r['title'],
+        'status'       => $r['status'],
+        'priority'     => $r['priority'],
+        'completed_at' => $r['completed_at'],
+        'created_at'   => $r['created_at'],
+        'state'        => $state, // done | open | carried
+    ];
+}
 
 /** Advance a recurring todo's due date and insert a fresh open copy. */
 function regenerate_recurring_todo(int $uid, array $todo): int
