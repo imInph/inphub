@@ -4,7 +4,7 @@
 
 import { apiGet, apiPost } from './api.js';
 import {
-  escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog,
+  escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate,
 } from './ui.js';
 import { opts } from './todos.js';
 
@@ -89,7 +89,7 @@ function heatmap(logged: Set<string>, color: string | null): string {
   for (let i = 0; i < 140; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
+    const key = localDate(d);
     const on = logged.has(key);
     cells.push(`<i class="${on ? 'l2' : ''}" title="${key}" ${on ? `style="background:${escapeHtml(c)}"` : ''}></i>`);
   }

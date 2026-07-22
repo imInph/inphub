@@ -39,7 +39,9 @@ async function request<T = any>(
   let res: Response;
   try {
     res = await fetch(url, { credentials: 'same-origin', ...init });
-  } catch {
+  } catch (e) {
+    // Deliberate cancellations (AbortController) must stay distinguishable.
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
     throw new ApiError('Network error — is the server running?', 0);
   }
 
@@ -76,10 +78,12 @@ export function apiPost<T = any>(
   endpoint: string,
   action: string,
   payload: Record<string, unknown> = {},
+  opts: { signal?: AbortSignal } = {},
 ): Promise<T> {
   return request<T>(endpoint, action, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: opts.signal,
   });
 }

@@ -1,5 +1,7 @@
 # inphub
 
+**v1.0.0**
+
 A personal life-dashboard — expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
 and an activity history — behind a hand-provisioned login, with an **optional** AI layer (Claude or
 a local Ollama). Plain PHP 8 backend (no framework), TypeScript frontend compiled to plain ES

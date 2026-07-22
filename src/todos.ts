@@ -17,19 +17,17 @@ interface Todo {
   tags: string | null;
   due_date: string | null;
   recurring: string | null;
+  created_at: string;
+  completed_at: string | null;
 }
 
 const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
 let filterStatus = 'open';
-let historyMode = false;
 
-interface HistItem {
-  id: number; title: string; status: string; priority: string;
-  completed_at: string | null; created_at: string; state: 'done' | 'open' | 'carried';
-}
-interface WeekBucket { week_start: string; week_end: string; items: HistItem[]; }
+/** Display mode: false = active list, true = weekly (Mon→Sun) history. */
+let historyMode = false;
 
 export async function renderTodos(container: HTMLElement): Promise<void> {
   container.innerHTML = `
@@ -43,8 +41,8 @@ export async function renderTodos(container: HTMLElement): Promise<void> {
           <option value="done">Done</option>
           <option value="archived">Archived</option>
         </select>
-        <button class="btn btn-ghost" data-action="history" title="Weekly history (Mon–Sun)">🗓 History</button>
-        <button class="btn btn-ghost" data-action="export" title="Export the list">↓ Export</button>
+        <button class="btn" data-action="history">🕘 History</button>
+        <button class="btn" data-action="export">⬇ Export</button>
         <button class="btn btn-primary" data-action="new">+ New</button>
       </div>
     </div>
@@ -77,56 +75,57 @@ export async function renderTodos(container: HTMLElement): Promise<void> {
   onAction(container, (action, el) => {
     const id = Number(el.dataset.id);
     if (action === 'new') openEditor(container, null);
-    if (action === 'export') openExport();
-    if (action === 'history') {
-      historyMode = !historyMode;
-      load(container);
-    }
     if (action === 'edit') openEditorById(container, id);
     if (action === 'complete') complete(container, id);
     if (action === 'delete') remove(container, id);
+    if (action === 'export') openExport();
+    if (action === 'history') {
+      historyMode = !historyMode;
+      syncToolbar(container);
+      load(container);
+    }
   });
+
+  syncToolbar(container);
 
   await load(container);
 }
 
-/** Offer the current to-do list as a download in Markdown, CSV, or plain text. */
+/** Download the list in the chosen format (same pattern as the Settings exports). */
 function openExport(): void {
-  const q = encodeURIComponent(filterStatus);
-  const link = (fmt: string, label: string, hint: string) =>
-    `<a class="btn" style="justify-content:flex-start" href="../api/export.php?action=todos_${fmt}&status=${q}">
-       ⬇ ${label} <span class="muted" style="margin-left:6px">${hint}</span></a>`;
   openModal({
-    title: 'Export to-do list',
+    title: 'Export To-Do list',
+    confirmLabel: 'Done',
     cancelLabel: 'Close',
-    confirmLabel: 'Close',
     bodyHtml: `
-      <p class="text-dim" style="margin:0 0 10px">Exports the <strong>${escapeHtml(filterStatus)}</strong> list.</p>
-      <div class="list" style="display:flex;flex-direction:column;gap:8px">
-        ${link('md', 'Markdown', '.md — checklist with status')}
-        ${link('csv', 'CSV', '.csv — number, title, status, completed')}
-        ${link('txt', 'Plain text', '.txt — numbered 1…n')}
+      <p class="text-dim" style="margin-top:0">Exports every task you own — title, status, priority, dates.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn" href="../api/export.php?action=todos_md">⬇ Markdown</a>
+        <a class="btn" href="../api/export.php?action=todos_csv">⬇ CSV</a>
+        <a class="btn" href="../api/export.php?action=todos_json">⬇ JSON</a>
       </div>`,
   });
 }
 
 let cache: Todo[] = [];
 
+/** Reflect the current mode in the toolbar (history hides the status filter). */
+function syncToolbar(container: HTMLElement): void {
+  const filterEl = container.querySelector<HTMLSelectElement>('[data-role="filter"]');
+  if (filterEl) filterEl.hidden = historyMode;
+  const btn = container.querySelector<HTMLButtonElement>('[data-action="history"]');
+  if (btn) {
+    btn.textContent = historyMode ? '☰ Active list' : '🕘 History';
+    btn.classList.toggle('btn-primary', historyMode);
+  }
+}
+
 async function load(container: HTMLElement): Promise<void> {
   const list = container.querySelector<HTMLElement>('[data-role="list"]')!;
-  const quick = container.querySelector<HTMLElement>('[data-role="quick"]');
-  const filter = container.querySelector<HTMLElement>('[data-role="filter"]');
-  const histBtn = container.querySelector<HTMLElement>('[data-action="history"]');
-
-  // History mode swaps the flat list for week buckets and hides the live controls.
-  if (quick) quick.hidden = historyMode;
-  if (filter) filter.style.display = historyMode ? 'none' : '';
-  if (histBtn) histBtn.textContent = historyMode ? '← List' : '🗓 History';
   if (historyMode) {
-    await loadHistory(list);
+    await loadWeeks(container, list);
     return;
   }
-
   const query = filterStatus === 'open' ? {} : { status: filterStatus };
   let items = await apiGet<Todo[]>('todos', 'list', query);
   if (filterStatus === 'open') items = items.filter((t) => t.status === 'todo' || t.status === 'in_progress');
@@ -137,6 +136,95 @@ async function load(container: HTMLElement): Promise<void> {
     return;
   }
   list.innerHTML = `<div class="list">${items.map(row).join('')}</div>`;
+}
+
+/* -------------------------------------------------------- weekly history */
+
+/** Monday 00:00 (local) of the week containing d — weeks run Mon→Sun. */
+function mondayOf(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+function parseDb(ts: string): Date {
+  return new Date(ts.replace(' ', 'T'));
+}
+
+function weekLabel(monday: Date): string {
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return `${fmt(monday)} – ${fmt(sunday)} ${sunday.getFullYear()}`;
+}
+
+/**
+ * Weeks are a display concept — nothing is deleted on Monday. Completed tasks
+ * bucket into the week they were finished; unfinished tasks carry over to the
+ * current week but stay visible (marked "carried over") in the week they were
+ * created.
+ */
+async function loadWeeks(container: HTMLElement, list: HTMLElement): Promise<void> {
+  const items = await apiGet<Todo[]>('todos', 'list');
+  cache = items;
+
+  const thisMonday = mondayOf(new Date());
+  interface WeekBucket { monday: Date; done: Todo[]; open: Todo[]; carried: Todo[]; }
+  const weeks = new Map<number, WeekBucket>();
+  const bucket = (monday: Date): WeekBucket => {
+    let b = weeks.get(monday.getTime());
+    if (!b) {
+      b = { monday, done: [], open: [], carried: [] };
+      weeks.set(monday.getTime(), b);
+    }
+    return b;
+  };
+
+  for (const t of items) {
+    if (t.completed_at) {
+      bucket(mondayOf(parseDb(t.completed_at))).done.push(t);
+      continue;
+    }
+    if (t.status === 'archived') continue;
+    // Unfinished: lives in the current week…
+    bucket(thisMonday).open.push(t);
+    // …and stays visible in the (past) week it was created.
+    const created = mondayOf(parseDb(t.created_at));
+    if (created.getTime() < thisMonday.getTime()) bucket(created).carried.push(t);
+  }
+
+  const sorted = [...weeks.values()].sort((a, b) => b.monday.getTime() - a.monday.getTime());
+  if (!sorted.length) {
+    list.innerHTML = emptyState('🗓', 'No tasks yet — the weekly history builds itself as you work.');
+    return;
+  }
+
+  list.innerHTML = sorted.map((w) => {
+    const current = w.monday.getTime() === thisMonday.getTime();
+    const chips: string[] = [];
+    if (w.done.length) chips.push(`${w.done.length} done`);
+    if (w.open.length) chips.push(`${w.open.length} open`);
+    if (w.carried.length) chips.push(`${w.carried.length} carried over`);
+    return `<section class="card" style="margin-bottom:16px">
+      <div class="card-head">
+        <h3>${current ? 'This week' : escapeHtml(weekLabel(w.monday))}${current ? ` <span class="muted">(${escapeHtml(weekLabel(w.monday))})</span>` : ''}</h3>
+        <span class="chip">${escapeHtml(chips.join(' · ') || 'empty')}</span>
+      </div>
+      <div class="list">
+        ${w.open.map(row).join('')}
+        ${w.carried.map((t) => rowCarried(t)).join('')}
+        ${w.done.map(row).join('')}
+      </div>
+    </section>`;
+  }).join('');
+}
+
+/** A task created this (past) week that rolled over to the current week. */
+function rowCarried(t: Todo): string {
+  return `<div class="row" style="opacity:.65">
+    <span class="check" data-action="complete" data-id="${t.id}" title="Complete"></span>
+    <span class="grow">${escapeHtml(t.title)} <span class="muted">· carried over to this week</span></span>
+  </div>`;
 }
 
 function row(t: Todo): string {
@@ -156,40 +244,6 @@ function row(t: Todo): string {
       <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${t.id}">Edit</button>
       <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${t.id}">✕</button>
     </span>
-  </div>`;
-}
-
-/* -------------------------------------------------------- weekly history */
-
-async function loadHistory(list: HTMLElement): Promise<void> {
-  const res = await apiGet<{ weeks: WeekBucket[]; current_week_start: string }>('todos', 'history');
-  if (!res.weeks.length) {
-    list.innerHTML = emptyState('🗓', 'No history yet.');
-    return;
-  }
-  list.innerHTML = res.weeks.map((w) => weekSection(w, res.current_week_start)).join('');
-}
-
-function weekSection(w: WeekBucket, current: string): string {
-  const isCurrent = w.week_start === current;
-  const label = isCurrent ? 'This week' : `${fmtDate(w.week_start)} – ${fmtDate(w.week_end)}`;
-  const count = `${w.items.length} task${w.items.length !== 1 ? 's' : ''}`;
-  return `<section class="week-bucket">
-    <div class="week-head"><h3>${escapeHtml(label)}</h3><span class="muted">${count}</span></div>
-    ${w.items.length ? `<div class="list">${w.items.map(histRow).join('')}</div>` : emptyState('·', 'Nothing this week.')}
-  </section>`;
-}
-
-function histRow(t: HistItem): string {
-  const done = t.state === 'done';
-  const tag = t.state === 'carried'
-    ? '<span class="chip">carried over</span>'
-    : t.state === 'open' ? '<span class="chip">open</span>' : '';
-  const when = done && t.completed_at ? `<span class="muted"> · completed ${escapeHtml(fmtDate(t.completed_at))}</span>` : '';
-  return `<div class="row">
-    <span class="check ${done ? 'done' : ''}">${done ? '✓' : ''}</span>
-    <span class="grow"><span style="${done ? 'text-decoration:line-through;opacity:.6' : ''}">${escapeHtml(t.title)}</span>${when}</span>
-    ${tag}
   </div>`;
 }
 

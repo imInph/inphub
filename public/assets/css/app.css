@@ -126,6 +126,7 @@ label.checkbox input { width: auto; }
     padding: 8px 10px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: .88rem;
 }
 .login-hint { margin-top: 18px; color: var(--text-faint); font-size: .8rem; text-align: center; }
+.login-version { margin-top: 8px; color: var(--text-faint); font-size: .72rem; text-align: center; font-family: var(--font-mono); }
 .logo-mark { color: var(--accent); }
 .logo-rest { color: var(--text); }
 
@@ -140,6 +141,7 @@ label.checkbox input { width: auto; }
     padding: 18px 14px; position: sticky; top: 0; height: 100vh;
 }
 .brand { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; padding: 4px 8px 14px; }
+.brand-version { font-size: .68rem; font-weight: 400; color: var(--text-faint); vertical-align: super; margin-left: 4px; }
 .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .nav-item {
     display: flex; align-items: center; padding: 8px 12px;
@@ -156,6 +158,8 @@ label.checkbox input { width: auto; }
     position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(8px); z-index: 5;
 }
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.hamburger { display: none; font-size: 1.2rem; }
 .greeting { font-size: 1.1rem; font-weight: 600; }
 .greeting small { display: block; font-weight: 400; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
@@ -174,6 +178,18 @@ label.checkbox input { width: auto; }
 }
 .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .card-head h3 { margin: 0; }
+
+/* Widget content area: capped height with its own thin, theme-aware scrollbar.
+   The .card-head above it stays fixed — only the content scrolls. */
+.card-scroll {
+    max-height: 260px; overflow-y: auto;
+    scrollbar-width: thin;                             /* Firefox */
+    scrollbar-color: var(--border-strong) transparent; /* Firefox */
+}
+.card-scroll::-webkit-scrollbar { width: 8px; }        /* Chromium/WebKit */
+.card-scroll::-webkit-scrollbar-track { background: transparent; }
+.card-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.card-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 
 .grid { display: grid; gap: var(--gap); }
 .grid-dash { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
@@ -344,65 +360,23 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 .chat-panel[hidden] { display: none; }
 @keyframes slidepanel { from { transform: translateX(100%); } to { transform: none; } }
 .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.chat-sessions { max-height: 40vh; overflow-y: auto; border-bottom: 1px solid var(--border); background: var(--bg-elev-2); }
+.chat-sessions[hidden] { display: none; }
+.chat-session { display: flex; align-items: center; gap: 4px; padding: 2px 8px; }
+.chat-session.active { background: var(--bg-elev); }
+.chat-session-open { flex: 1; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; background: none; border: 0; color: var(--text); cursor: pointer; padding: 8px; text-align: left; border-radius: var(--radius-sm); font-size: .85rem; }
+.chat-session-open:hover { background: var(--bg-elev); }
+.chat-session-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-session-date { color: var(--text-dim); font-size: .72rem; flex-shrink: 0; }
+.chat-model { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: .8rem; color: var(--text-dim); }
+.chat-model input { flex: 1; font-size: .8rem; padding: 4px 8px; }
+.chat-actions-note.warn { color: var(--warn); }
 .chat-log { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .chat-msg { padding: 10px 12px; border-radius: var(--radius-sm); max-width: 90%; font-size: .9rem; }
 .chat-msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
 .chat-msg.assistant { align-self: flex-start; background: var(--bg-elev-2); border: 1px solid var(--border); }
 .chat-actions-note { font-size: .76rem; color: var(--good); margin-top: 6px; }
 .chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
-
-/* Chat header tools: model picker + history/new/close */
-.chat-head-tools { display: flex; align-items: center; gap: 4px; }
-.chat-head-tools select[data-role="model"] {
-    max-width: 130px; font-size: .74rem; padding: 4px 6px;
-    background: var(--bg-elev-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: var(--radius-sm);
-}
-.chat-head-tools select[data-role="model"][hidden] { display: none; }
-
-/* Conversations drawer */
-.chat-sessions {
-    border-bottom: 1px solid var(--border); background: var(--bg-elev-2);
-    max-height: 260px; overflow-y: auto; padding: 6px;
-}
-.chat-sessions[hidden] { display: none; }
-.chat-note { padding: 12px; color: var(--text-dim); font-size: .82rem; }
-.chat-session { display: flex; align-items: stretch; gap: 4px; border-radius: var(--radius-sm); }
-.chat-session:hover { background: var(--bg-elev); }
-.chat-session.active { background: var(--bg-elev); outline: 1px solid var(--border); }
-.chat-session-open {
-    flex: 1; display: flex; flex-direction: column; gap: 2px; text-align: left;
-    background: none; border: 0; color: var(--text); cursor: pointer; padding: 8px 10px; min-width: 0;
-}
-.chat-session-title { font-size: .84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.chat-session-meta { font-size: .72rem; color: var(--text-dim); }
-.chat-session-del {
-    background: none; border: 0; color: var(--text-dim); cursor: pointer; padding: 0 10px; font-size: .85rem;
-}
-.chat-session-del:hover { color: var(--bad); }
-
-/* ==========================================================================
-   Shared capped-and-scrollable content area (dashboard widgets, 5.1)
-   Header stays fixed; only this content area scrolls, with a thin themed bar.
-   ========================================================================== */
-.card-scroll {
-    max-height: 260px;
-    overflow-y: auto;
-    scrollbar-width: thin;                         /* Firefox */
-    scrollbar-color: var(--border) transparent;    /* thumb, track */
-}
-.card-scroll::-webkit-scrollbar { width: 8px; }
-.card-scroll::-webkit-scrollbar-track { background: transparent; }
-.card-scroll::-webkit-scrollbar-thumb {
-    background: var(--border); border-radius: 8px;
-    border: 2px solid transparent; background-clip: padding-box;
-}
-.card-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
-
-/* Weekly to-do history (4.2) */
-.week-bucket { margin-bottom: 18px; }
-.week-head { display: flex; align-items: baseline; justify-content: space-between; margin: 4px 0 8px; }
-.week-head h3 { margin: 0; font-size: 1rem; }
 
 /* ==========================================================================
    Markdown (rendered AI/notes text)
@@ -421,59 +395,49 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 .empty .big { font-size: 2rem; margin-bottom: 8px; }
 
 /* ==========================================================================
-   Responsive
+   Responsive — ≤768px: single column, drawer nav, full-screen sheets,
+   44px touch targets, no hover-only affordances, no horizontal page scroll.
    ========================================================================== */
-/* Hamburger + drawer scrim are desktop-hidden; the mobile query reveals them. */
-.menu-toggle { display: none; }
-.menu-toggle { font-size: 1.2rem; }
-.nav-scrim { display: none; }
-
-@media (max-width: 820px) {
-    /* Single-column shell; the sidebar becomes an off-canvas drawer. */
+@media (max-width: 768px) {
     .app { grid-template-columns: 1fr; }
-    body { overflow-x: hidden; }               /* never scroll the page sideways */
-    .menu-toggle { display: inline-flex; }
 
+    /* Sidebar becomes a slide-in drawer opened by the topbar hamburger. */
+    .hamburger { display: inline-flex; min-width: 44px; }
     .sidebar {
-        position: fixed; top: 0; left: 0; height: 100vh; width: 260px; max-width: 82vw;
-        transform: translateX(-100%); transition: transform .2s ease; z-index: 70;
-        flex-direction: column; flex-wrap: nowrap; align-items: stretch;
+        position: fixed; top: 0; left: 0; bottom: 0; width: 260px; max-width: 82vw;
+        z-index: 70; transform: translateX(-100%); transition: transform .2s ease;
+        height: 100dvh; overflow-y: auto;
     }
-    body.nav-open .sidebar { transform: none; }
-    body.nav-open .nav-scrim {
-        display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 65;
-    }
+    .sidebar.open { transform: none; box-shadow: var(--shadow); }
+    .nav-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 65; }
+    .nav-backdrop[hidden] { display: none; }
 
-    .nav { flex-direction: column; flex-wrap: nowrap; }
-    .sidebar-foot { flex-direction: column; border-top: 1px solid var(--border); padding-top: 10px; margin-left: 0; }
+    .topbar { padding: 10px 14px; }
+    .view { padding: 14px; }
 
-    /* Touch targets ≥ 44px; avoid hover-only affordances doing double-duty. */
-    .nav-item { min-height: 44px; }
-    .btn { min-height: 40px; touch-action: manipulation; }
-
-    /* Density */
-    .topbar { padding: 12px 14px; }
-    .topbar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .greeting { font-size: 1rem; }
-    .view { padding: 16px 14px; }
-
-    /* Everything stacks to one column. */
+    /* Dashboard and card grids collapse to one full-width column. */
     .grid-dash, .grid-2, .grid-3 { grid-template-columns: 1fr; }
-    .field-row { flex-direction: column; }
+    /* The 260px widget cap is relaxed on mobile: nested scrollbars inside a
+       single-column page fight the page scroll and hide content. */
+    .card-scroll { max-height: none; }
 
-    /* The 260px widget cap relaxes on small screens (5.1 → 5.2). */
-    .card-scroll { max-height: 62vh; }
+    /* Touch targets ≥44px; hover-revealed actions become always visible. */
+    .btn, .nav-item, select, input:not([type="color"]), .habit-chip { min-height: 44px; }
+    .check { width: 28px; height: 28px; }
+    .row-actions { opacity: 1; }
+    .shortcut-del { opacity: 1; }
 
-    /* Modals become full-screen sheets. */
+    /* Modals, chat, and the palette become full-screen sheets. */
     .modal-backdrop { padding: 0; place-items: stretch; }
-    .modal { max-width: none; width: 100%; height: 100%; max-height: 100dvh; border: 0; border-radius: 0; }
+    .modal { max-width: none; max-height: none; min-height: 100dvh; border-radius: 0; border: none; }
+    .chat-panel { width: 100vw; max-width: 100vw; height: 100dvh; border-left: none; }
+    .palette { padding-top: 0; }
+    .palette-box { max-width: none; min-height: 100dvh; border-radius: 0; border: none; display: flex; flex-direction: column; }
+    .palette-list { max-height: none; flex: 1; }
 
-    /* Chat panel becomes a full-screen sheet. */
-    .chat-panel { width: 100vw; max-width: 100vw; border-left: 0; }
+    /* Wide tables scroll inside themselves instead of stretching the page. */
+    table.data { display: block; overflow-x: auto; }
+    table.data th, table.data td { white-space: nowrap; }
 
-    /* Wide tables scroll horizontally instead of pushing the page wide. */
-    table.data { display: block; overflow-x: auto; white-space: nowrap; }
-
-    /* Toasts span the width so they aren't clipped. */
-    .toasts { left: 12px; right: 12px; bottom: 12px; }
+    .toasts { left: 14px; right: 14px; bottom: 14px; }
 }

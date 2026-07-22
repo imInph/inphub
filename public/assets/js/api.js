@@ -26,7 +26,10 @@ async function request(endpoint, action, init = {}, query = {}) {
     try {
         res = await fetch(url, { credentials: 'same-origin', ...init });
     }
-    catch {
+    catch (e) {
+        // Deliberate cancellations (AbortController) must stay distinguishable.
+        if (e instanceof DOMException && e.name === 'AbortError')
+            throw e;
         throw new ApiError('Network error — is the server running?', 0);
     }
     // 401 → session expired; bounce to login.
@@ -51,10 +54,11 @@ export function apiGet(endpoint, action = 'list', query = {}) {
     return request(endpoint, action, { method: 'GET' }, query);
 }
 /** POST a mutation action with a JSON body. */
-export function apiPost(endpoint, action, payload = {}) {
+export function apiPost(endpoint, action, payload = {}, opts = {}) {
     return request(endpoint, action, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: opts.signal,
     });
 }

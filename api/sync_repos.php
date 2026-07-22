@@ -25,7 +25,11 @@ api_handle(function (): void {
 
     $listed = github_list_repos($username, $token);
     if (!$listed['ok']) {
-        fail('GitHub sync failed: ' . $listed['error'], 502);
+        $err = (string) $listed['error'];
+        if (stripos($err, 'rate limit') !== false) {
+            fail('GitHub rate limit reached — wait a bit and sync again' . ($token === null ? ', or add a token in Settings for a higher limit' : '') . '.', 502);
+        }
+        fail('GitHub sync failed: ' . $err, 502);
     }
 
     $pdo = db();

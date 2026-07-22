@@ -10,7 +10,7 @@
 import { apiGet, apiPost } from './api.js';
 import { toast } from './ui.js';
 import { initChat } from './chat.js';
-import { initPalette } from './command-palette.js';
+import { initPalette, setPaletteChat } from './command-palette.js';
 
 import { renderDashboard } from './dashboard.js';
 import { renderTodos } from './todos.js';
@@ -64,7 +64,6 @@ function viewFromHash(): string {
 
 async function activate(view: string): Promise<void> {
   currentView = view;
-  closeNav();
 
   document.querySelectorAll<HTMLElement>('.nav-item').forEach((el) => {
     el.classList.toggle('active', el.dataset.view === view);
@@ -93,11 +92,6 @@ export function go(view: string): void {
   if (VIEWS[view]) location.hash = view;
 }
 
-/** Close the mobile nav drawer if open. */
-function closeNav(): void {
-  document.body.classList.remove('nav-open');
-}
-
 /** Whether the AI layer is configured — set once at boot. */
 export let aiAvailable = false;
 
@@ -109,6 +103,8 @@ export function refreshCurrentView(): void {
 
 /* -------------------------------------------------------------------- theme */
 
+const THEME_KEY = 'inphub.theme';
+
 function applyTheme(theme: string): void {
   document.documentElement.setAttribute('data-theme', theme);
 }
@@ -116,10 +112,16 @@ function applyTheme(theme: string): void {
 async function toggleTheme(): Promise<void> {
   const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   applyTheme(next);
+  // Instant local cache so the choice survives a reload even if the save fails.
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch {
+    /* storage unavailable — settings save below still covers it */
+  }
   try {
     await apiPost('settings', 'save', { settings: { theme: next } });
   } catch {
-    /* non-fatal: theme still applied for the session */
+    toast('Theme saved locally, but syncing to your account failed.', 'bad');
   }
 }
 
@@ -218,23 +220,38 @@ function onKey(e: KeyboardEvent): void {
 /* -------------------------------------------------------------------- init */
 
 function init(): void {
-  applyTheme(boot.theme || 'dark');
+  // localStorage holds the user's latest choice (set only on toggle) — it wins
+  // over the server value in case a previous settings save failed.
+  let cached: string | null = null;
+  try {
+    cached = localStorage.getItem(THEME_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+  applyTheme(cached === 'light' || cached === 'dark' ? cached : (boot.theme || 'dark'));
   greet();
   tick();
   setInterval(tick, 1000);
 
   document.getElementById('btn-theme')?.addEventListener('click', toggleTheme);
 
-  // Mobile nav drawer: hamburger toggles it; scrim or a nav choice closes it.
-  document.getElementById('btn-menu')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
-  document.getElementById('nav-scrim')?.addEventListener('click', closeNav);
+  // Mobile nav drawer (hamburger is only visible at the small breakpoint).
+  const sidebar = document.querySelector<HTMLElement>('.sidebar');
+  const navBackdrop = document.getElementById('nav-backdrop');
+  const setDrawer = (open: boolean) => {
+    sidebar?.classList.toggle('open', open);
+    if (navBackdrop) navBackdrop.hidden = !open;
+  };
+  document.getElementById('btn-nav')?.addEventListener('click', () => setDrawer(!sidebar?.classList.contains('open')));
+  navBackdrop?.addEventListener('click', () => setDrawer(false));
+  sidebar?.addEventListener('click', (e) => {
+    // Navigating or using a footer action closes the drawer.
+    if ((e.target as HTMLElement).closest('.nav-item, .sidebar-foot .btn')) setDrawer(false);
+  });
 
   document.querySelectorAll<HTMLAnchorElement>('.nav-item').forEach((el) => {
     // Anchors already set location.hash; nothing extra needed, but keep focus tidy.
-    el.addEventListener('click', () => {
-      el.blur();
-      closeNav();
-    });
+    el.addEventListener('click', () => el.blur());
   });
 
   window.addEventListener('hashchange', onRoute);
@@ -252,21 +269,39 @@ function init(): void {
   setupAi();
 }
 
-async function setupAi(): Promise<void> {
+let chatInited = false;
+
+/**
+ * (Re-)check whether the AI layer is configured and show/hide every AI entry
+ * point accordingly. Called at boot and again after a Settings save so
+ * toggling AI off removes chat + brief immediately, without a reload.
+ */
+export async function refreshAiAvailability(rerender = true): Promise<void> {
   try {
     const res = await apiGet<{ available: boolean }>('ai', 'status');
     aiAvailable = res.available;
   } catch {
     aiAvailable = false;
   }
-  if (aiAvailable) {
-    const btn = document.getElementById('btn-chat');
-    if (btn) btn.hidden = false;
-    initChat();
-    // The first view render happened before we knew AI was on — re-render so
-    // its AI affordances (e.g. the dashboard brief) appear.
-    refreshCurrentView();
+  const btn = document.getElementById('btn-chat');
+  if (btn) btn.hidden = !aiAvailable;
+  if (!aiAvailable) {
+    const panel = document.getElementById('chat-panel');
+    if (panel) panel.hidden = true;
   }
+  if (aiAvailable && !chatInited) {
+    initChat();
+    chatInited = true;
+  }
+  setPaletteChat(aiAvailable);
+  // Re-render so AI affordances (e.g. the dashboard brief) appear/disappear.
+  // Views also re-render on navigation, so callers already inside a view
+  // (Settings save) skip this to avoid rebuilding their own DOM mid-flow.
+  if (rerender) refreshCurrentView();
+}
+
+async function setupAi(): Promise<void> {
+  await refreshAiAvailability();
   initPalette({ chat: aiAvailable });
 }
 

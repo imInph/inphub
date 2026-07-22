@@ -41,6 +41,13 @@ $theme = 'dark';
     <title>inphub · sign in</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/css/app.css">
+    <script>
+        // Use the last-chosen theme (cached by the app) instead of always dark.
+        try {
+            var t = localStorage.getItem('inphub.theme');
+            if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+    </script>
 </head>
 <body class="login-body">
     <main class="login-card">
@@ -70,6 +77,7 @@ $theme = 'dark';
         </form>
 
         <p class="login-hint">No account? Accounts are created by hand in phpMyAdmin.</p>
+        <p class="login-version">inphub v<?= htmlspecialchars(INPHUB_VERSION) ?></p>
     </main>
 </body>
 </html>

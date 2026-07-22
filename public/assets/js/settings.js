@@ -6,7 +6,7 @@
 import { apiGet, apiPost } from './api.js';
 import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti } from './ui.js';
 import { opts } from './todos.js';
-import { boot, aiAvailable } from './app.js';
+import { boot, aiAvailable, refreshAiAvailability } from './app.js';
 const SECRET_UNCHANGED = '••••••••';
 export async function renderSettings(container) {
     container.innerHTML = `<div class="empty">Loading…</div>`;
@@ -80,14 +80,9 @@ export async function renderSettings(container) {
       <button type="button" class="btn btn-ghost btn-sm" data-role="egg" title="?">🐣</button>
     </div>`;
     const form = container.querySelector('[data-role="form"]');
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
         e.preventDefault();
-        const saved = await save(container, form);
-        // Toggling AI on/off changes what's gated app-wide (chat, brief, weekly
-        // review, palette). aiAvailable is set at boot, so reload to re-evaluate it.
-        const nowOn = form.querySelector('[name="ai_enabled"]').checked;
-        if (saved && nowOn !== aiOn)
-            location.reload();
+        save(container, form);
     });
     container.querySelector('[data-role="test-ai"]').addEventListener('click', () => testAi(container));
     container.querySelector('[data-role="weekly"]')?.addEventListener('click', () => weeklyReview(container));
@@ -133,11 +128,11 @@ async function save(container, form) {
         toast('Settings saved.', 'good');
         if (v.theme)
             document.documentElement.setAttribute('data-theme', v.theme);
-        return true;
+        // AI config may have changed — re-check so chat/brief appear or vanish now.
+        await refreshAiAvailability(false);
     }
     catch (e) {
         toast(e instanceof Error ? e.message : 'Save failed', 'bad');
-        return false;
     }
 }
 async function testAi(container) {

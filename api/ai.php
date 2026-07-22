@@ -3,25 +3,31 @@
  * inphub — AI features (all gated on ai_available()).
  *
  *   GET  ?action=status                          { available }
- *   GET  ?action=models                          models offered by the provider
  *   GET  ?action=brief                           today's cached brief (or null)
  *   POST ?action=generate_brief                  (re)generate today's brief
- *   POST ?action=clear_brief                     delete today's stored brief
- *   GET  ?action=chat_sessions                   list past conversations
- *   GET  ?action=chat_history    { session? }    turns in one conversation
- *   POST ?action=chat            { message, session?, model? }  reply + actions
- *   POST ?action=clear_chat      { session? }    delete one conversation
+ *   POST ?action=clear_brief                     delete the user's stored briefs
+ *   GET  ?action=chat_history    [session_id]     turns of a session (default: latest)
+ *   GET  ?action=list_sessions                   chat conversations, newest first
+ *   GET  ?action=models                          selectable models for the provider
+ *   POST ?action=chat            { message, session_id?, model? }   reply + executed actions
+ *   POST ?action=delete_session  { session_id }   delete one conversation
  *   POST ?action=analyze_repo    { repo_id }     produce repo_suggestions
  *   POST ?action=analyze_stale                   analyze every stale repo
  *   POST ?action=quick_add       { text }        classify free text → the right table
  *   GET  ?action=weekly_review                   summarise the last 7 days
  *
- * Every action except status and quick_add requires AI to be enabled
- * (ai_gate → 403). quick_add also works with AI off (prefix parsing).
+ * quick_add is the only action that also works with AI off (prefix parsing).
  */
 
 require_once __DIR__ . '/_bootstrap.php';
 require_once __DIR__ . '/../lib/ai.php';
+
+/** Whitelist of actions the chat AI is allowed to execute. Must be defined
+ *  before api_handle() runs the request — top-level consts are not hoisted. */
+const CHAT_ACTIONS = ['add_todo', 'complete_todo', 'add_expense', 'log_habit', 'add_note', 'update_goal_progress', 'add_repo_suggestion'];
+
+/** Repo AI analysis cooldown — cached suggestions are served within this window. */
+const AI_ANALYZE_COOLDOWN_HOURS = 6;
 
 api_handle(function (): void {
     $uid   = current_user_id();
@@ -32,11 +38,6 @@ api_handle(function (): void {
             ok(['available' => ai_available($uid)]);
             break;
 
-        case 'models':
-            ai_gate($uid);
-            ok(ai_list_models($uid));
-            break;
-
         case 'brief': {
             ai_gate($uid);
             $stmt = db()->prepare('SELECT * FROM daily_briefs WHERE user_id=? AND brief_date=CURRENT_DATE');
@@ -45,32 +46,65 @@ api_handle(function (): void {
             break;
         }
 
+        case 'clear_brief': {
+            ai_gate($uid);
+            $stmt = db()->prepare('DELETE FROM daily_briefs WHERE user_id=?');
+            $stmt->execute([$uid]);
+            ok(['cleared' => true]);
+            break;
+        }
+
         case 'generate_brief':
             ai_gate($uid);
             ok(['brief' => generate_brief($uid)]);
             break;
 
-        case 'clear_brief': {
+        case 'chat_history': {
             ai_gate($uid);
-            db()->prepare('DELETE FROM daily_briefs WHERE user_id=? AND brief_date=CURRENT_DATE')->execute([$uid]);
-            ok(['cleared' => true]);
+            $sid = str_or_null(input_get($input, 'session_id'));
+            if ($sid === null) {
+                // No session requested — resume the most recent conversation.
+                backfill_legacy_session($uid);
+                $stmt = db()->prepare('SELECT session_id FROM chat_sessions WHERE user_id=? ORDER BY updated_at DESC LIMIT 1');
+                $stmt->execute([$uid]);
+                $sid = $stmt->fetchColumn() ?: null;
+            }
+            if ($sid === null) {
+                ok(['session_id' => null, 'messages' => []]);
+                break;
+            }
+            $stmt = db()->prepare(
+                'SELECT id, role, content, actions, created_at FROM chat_messages
+                 WHERE user_id=? AND session_id=? ORDER BY id ASC LIMIT 100'
+            );
+            $stmt->execute([$uid, $sid]);
+            ok(['session_id' => $sid, 'messages' => $stmt->fetchAll()]);
             break;
         }
 
-        case 'chat_sessions':
+        case 'list_sessions': {
             ai_gate($uid);
-            ok(['sessions' => chat_sessions($uid)]);
-            break;
-
-        case 'chat_history': {
-            ai_gate($uid);
-            $session = chat_session(input_get($input, 'session'));
+            backfill_legacy_session($uid);
             $stmt = db()->prepare(
-                "SELECT id, role, content, actions, created_at FROM chat_messages
-                 WHERE user_id=? AND session_id=? ORDER BY id ASC LIMIT 100"
+                'SELECT session_id, title, created_at, updated_at FROM chat_sessions
+                 WHERE user_id=? ORDER BY updated_at DESC LIMIT 50'
             );
-            $stmt->execute([$uid, $session]);
-            ok(['messages' => $stmt->fetchAll(), 'session' => $session]);
+            $stmt->execute([$uid]);
+            ok(['sessions' => $stmt->fetchAll()]);
+            break;
+        }
+
+        case 'delete_session': {
+            ai_gate($uid);
+            $sid = str_or_null(input_get($input, 'session_id'));
+            if ($sid === null || $sid === '') {
+                fail('session_id is required.', 422);
+            }
+            $stmt = db()->prepare('DELETE FROM chat_messages WHERE user_id=? AND session_id=?');
+            $stmt->execute([$uid, $sid]);
+            $stmt = db()->prepare('DELETE FROM chat_sessions WHERE user_id=? AND session_id=?');
+            $stmt->execute([$uid, $sid]);
+            ok(['deleted' => true]);
             break;
         }
 
@@ -79,36 +113,58 @@ api_handle(function (): void {
             ok(chat_turn(
                 $uid,
                 (string) (str_or_null(input_get($input, 'message')) ?? ''),
-                chat_session(input_get($input, 'session')),
-                str_or_null(input_get($input, 'model'))
+                str_or_null(input_get($input, 'model')),
+                str_or_null(input_get($input, 'session_id'))
             ));
             break;
 
-        case 'clear_chat': {
+        case 'models':
             ai_gate($uid);
-            $session = chat_session(input_get($input, 'session'));
-            db()->prepare('DELETE FROM chat_messages WHERE user_id=? AND session_id=?')->execute([$uid, $session]);
-            ok(['cleared' => true]);
+            ok(ai_list_models($uid));
+            break;
+
+
+        case 'analyze_repo': {
+            ai_gate($uid);
+            $repo  = fetch_owned('repos', (int) input_get($input, 'repo_id'), $uid);
+            $force = (string) (input_get($input, 'force') ?? '') === '1';
+
+            // Serve the cached analysis inside the cooldown window (unless forced) —
+            // re-analysing on every click burns API tokens for the same input.
+            $last = repo_last_analyzed($uid, (int) $repo['id']);
+            if (!$force && $last !== null && strtotime($last) > time() - AI_ANALYZE_COOLDOWN_HOURS * 3600) {
+                $out = db()->prepare('SELECT * FROM repo_suggestions WHERE repo_id=? AND user_id=? ORDER BY id DESC');
+                $out->execute([(int) $repo['id'], $uid]);
+                ok(['suggestions' => $out->fetchAll(), 'cached' => true, 'analyzed_at' => $last]);
+                break;
+            }
+            ok(['suggestions' => analyze_repo($uid, $repo), 'cached' => false, 'analyzed_at' => date('Y-m-d H:i:s')]);
             break;
         }
-
-        case 'analyze_repo':
-            ai_gate($uid);
-            $repo = fetch_owned('repos', (int) input_get($input, 'repo_id'), $uid);
-            ok(['suggestions' => analyze_repo($uid, $repo)]);
-            break;
 
         case 'analyze_stale': {
             ai_gate($uid);
             $staleDays = (int) (get_setting($uid, 'stale_repo_days', '60') ?: 60);
             $stmt = db()->prepare('SELECT * FROM repos WHERE user_id=? AND staleness_days >= ? ORDER BY staleness_days DESC LIMIT 10');
             $stmt->execute([$uid, $staleDays]);
-            $count = 0;
+            $analyzed = 0;
+            $skipped  = 0;
+            $failed   = 0;
             foreach ($stmt->fetchAll() as $repo) {
-                analyze_repo($uid, $repo);
-                $count++;
+                $last = repo_last_analyzed($uid, (int) $repo['id']);
+                if ($last !== null && strtotime($last) > time() - AI_ANALYZE_COOLDOWN_HOURS * 3600) {
+                    $skipped++;
+                    continue;
+                }
+                // One bad repo/model reply must not sink the whole batch.
+                try {
+                    analyze_repo($uid, $repo);
+                    $analyzed++;
+                } catch (Throwable $e) {
+                    $failed++;
+                }
             }
-            ok(['analyzed' => $count]);
+            ok(['analyzed' => $analyzed, 'skipped' => $skipped, 'failed' => $failed]);
             break;
         }
 
@@ -132,19 +188,6 @@ function ai_gate(int $uid): void
     if (!ai_available($uid)) {
         fail('AI is disabled. Enable it and configure a provider in Settings.', 403);
     }
-}
-
-/**
- * Normalise a chat session id from client input. Falls back to 'default' and
- * only allows a safe id charset that fits the session_id column.
- */
-function chat_session($raw): string
-{
-    $s = is_string($raw) ? trim($raw) : '';
-    if ($s === '' || !preg_match('/^[A-Za-z0-9_\-]{1,64}$/', $s)) {
-        return 'default';
-    }
-    return $s;
 }
 
 /* ============================================================ daily brief */
@@ -241,23 +284,28 @@ function brief_context(int $uid): string
 
 /* ================================================================== chat */
 
-const CHAT_ACTIONS = ['add_todo', 'complete_todo', 'add_expense', 'log_habit', 'add_note', 'update_goal_progress', 'add_repo_suggestion'];
-
-function chat_turn(int $uid, string $message, string $session = 'default', ?string $model = null): array
+function chat_turn(int $uid, string $message, ?string $model = null, ?string $sessionId = null): array
 {
     if ($message === '') {
         fail('Empty message.', 422);
     }
 
-    save_chat($uid, 'user', $message, null, $session);
+    // No session yet → this message starts a new conversation.
+    $sid = ($sessionId !== null && $sessionId !== '' && mb_strlen($sessionId) <= 64)
+        ? $sessionId
+        : bin2hex(random_bytes(16));
 
-    $system  = chat_system_prompt($uid);
-    $history = recent_chat_text($uid, $session);
-    $opts    = ['max_tokens' => 1024];
-    if ($model !== null && $model !== '') {
-        $opts['model'] = $model; // per-session model; never written to settings
+    ensure_chat_session($uid, $sid, $message);
+    save_chat($uid, $sid, 'user', $message, null);
+
+    $system = chat_system_prompt($uid);
+    $history = recent_chat_text($uid, $sid);
+    // Session-only model override from the chat's selector — never persisted.
+    $opts = ['max_tokens' => 1024];
+    if ($model !== null && $model !== '' && mb_strlen($model) <= 100) {
+        $opts['model'] = $model;
     }
-    $reply = ai_generate($uid, $system, $history, $opts);
+    $reply   = ai_generate($uid, $system, $history, $opts);
 
     // Parse an optional trailing ```json { "actions": [...] } ``` block.
     [$clean, $actions] = split_actions($reply);
@@ -265,81 +313,97 @@ function chat_turn(int $uid, string $message, string $session = 'default', ?stri
     foreach ($actions as $a) {
         $tool = $a['tool'] ?? ($a['action'] ?? null);
         $args = $a['args'] ?? $a;
-        if (is_string($tool) && in_array($tool, CHAT_ACTIONS, true)) {
-            $summary = execute_chat_action($uid, $tool, is_array($args) ? $args : []);
-            if ($summary !== null) {
-                $executed[] = ['tool' => $tool, 'summary' => $summary];
-            }
+        if (!is_string($tool) || !in_array($tool, CHAT_ACTIONS, true)) {
+            $label = is_string($tool) ? $tool : '(missing tool name)';
+            $executed[] = ['tool' => $label, 'error' => "Unknown action \"{$label}\" — not executed."];
+            continue;
+        }
+        $summary = execute_chat_action($uid, $tool, is_array($args) ? $args : []);
+        if ($summary !== null) {
+            $executed[] = ['tool' => $tool, 'summary' => $summary];
+        } else {
+            $executed[] = ['tool' => $tool, 'error' => "Could not apply \"{$tool}\" — check the values and try again."];
         }
     }
 
-    save_chat($uid, 'assistant', $clean, $executed ?: null, $session);
-    return ['reply' => $clean, 'actions' => $executed, 'session' => $session];
+    save_chat($uid, $sid, 'assistant', $clean, $executed ?: null);
+    return ['reply' => $clean, 'actions' => $executed, 'session_id' => $sid];
 }
 
 /**
- * List the user's conversations (grouped by session_id), newest first. The
- * title is derived from the first user message in each session.
+ * Upsert the session row: created (titled from the first user message) on the
+ * first message, otherwise just bumps updated_at so listings sort by recency.
  */
-function chat_sessions(int $uid): array
+function ensure_chat_session(int $uid, string $sid, string $firstMessage): void
 {
-    $stmt = db()->prepare(
-        "SELECT cm.session_id,
-                MAX(cm.created_at) AS last_at,
-                COUNT(*)           AS turns,
-                (SELECT content FROM chat_messages m2
-                  WHERE m2.user_id=cm.user_id AND m2.session_id=cm.session_id AND m2.role='user'
-                  ORDER BY m2.id ASC LIMIT 1) AS title
-         FROM chat_messages cm
-         WHERE cm.user_id=?
-         GROUP BY cm.session_id
-         ORDER BY last_at DESC LIMIT 50"
-    );
-    $stmt->execute([$uid]);
-
-    $out = [];
-    foreach ($stmt->fetchAll() as $r) {
-        $title = trim((string) ($r['title'] ?? ''));
-        if ($title === '') {
-            $title = 'New chat';
-        } elseif (mb_strlen($title) > 48) {
-            $title = mb_substr($title, 0, 48) . '…';
-        }
-        $out[] = [
-            'session_id' => $r['session_id'],
-            'title'      => $title,
-            'last_at'    => $r['last_at'],
-            'turns'      => (int) $r['turns'],
-        ];
+    $title = mb_substr(trim((string) preg_replace('/\s+/', ' ', $firstMessage)), 0, 60);
+    if ($title === '') {
+        $title = 'New chat';
     }
-    return $out;
+    $stmt = db()->prepare(
+        'INSERT INTO chat_sessions (user_id, session_id, title) VALUES (?,?,?)
+         ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP'
+    );
+    $stmt->execute([$uid, $sid, $title]);
 }
 
+/**
+ * Give pre-sessions chat history (session_id='default') a session row so it
+ * shows up in the history menu. INSERT IGNORE: never bumps an existing row.
+ */
+function backfill_legacy_session(int $uid): void
+{
+    $stmt = db()->prepare(
+        "SELECT content FROM chat_messages WHERE user_id=? AND session_id='default' AND role='user' ORDER BY id ASC LIMIT 1"
+    );
+    $stmt->execute([$uid]);
+    $first = $stmt->fetchColumn();
+    if ($first === false) {
+        return;
+    }
+    $title = mb_substr(trim((string) preg_replace('/\s+/', ' ', (string) $first)), 0, 60) ?: 'Earlier chat';
+    $stmt = db()->prepare('INSERT IGNORE INTO chat_sessions (user_id, session_id, title) VALUES (?,?,?)');
+    $stmt->execute([$uid, 'default', $title]);
+}
+
+/**
+ * The single place the chat system prompt is built. Establishes what inphub
+ * actually is (a self-hosted personal dashboard — no company, no support
+ * team), injects the logged-in username, and appends a developer-mode block
+ * for the owner/developer account (imInph).
+ */
 function chat_system_prompt(int $uid): string
 {
-    $snapshot = brief_context($uid);
     $user     = current_user();
-    $username = (string) ($user['username'] ?? '');
-    $who      = $username !== '' ? $username : 'the owner';
+    $username = $user['username'] ?? 'user';
+    $display  = $user['display_name'] ?: $username;
 
     $identity = <<<TXT
-inphub is a single-user, self-hosted personal life dashboard, built and maintained by one person
-for their own use. There is no company behind it, no support team, no ticketing system, no other
-staff, and no product policies or pricing. Never offer to "escalate", "contact support", "open a
-ticket", "reach out to the team", or similar — none of that exists. If asked who runs or supports
-it, say plainly that it is a personal project maintained by its owner. Never invent features,
-policies, or people that are not in the data you are given.
+You are the built-in assistant of "inphub", a single-user personal life dashboard
+(todos, habits, expenses, notes, goals, focus sessions, GitHub repos).
 
-You are talking to {$who}.
+Facts you must never contradict:
+- inphub is self-hosted software running on the user's own machine, built and
+  maintained by one person. It is not a commercial product or a service.
+- There is no company, no support team, no ticketing system, and no other staff.
+  Never offer to "escalate", "contact support", "check with the team", or open a
+  ticket, and never invent product policies, plans, or terms of service.
+- If something looks broken, say so plainly; the person who can fix it is the
+  app's sole developer.
+
+You are talking to "{$display}" (username: {$username}).
 TXT;
 
-    // Developer mode: the sole owner/developer account gets a technical, direct assistant.
     if ($username === 'imInph') {
-        $identity .= "\n\nThis user, imInph, is the sole developer and owner of inphub. Be technical and "
-            . "direct: discuss implementation details, the database schema, and code freely. Skip "
-            . "end-user hand-holding, marketing tone, and disclaimers.";
+        $identity .= "\n\n" . <<<TXT
+Developer mode: this user is the sole developer and owner of inphub. Be technical
+and direct. Discuss implementation details, the database schema, and code freely
+(PHP + MySQL backend, TypeScript frontend). Skip end-user hand-holding and
+disclaimers — treat them as a peer who wrote this codebase.
+TXT;
     }
 
+    $snapshot = brief_context($uid);
     $tools = <<<TXT
 You can take actions on the user's data. When (and only when) the user asks you to change something,
 append a single fenced code block at the very end of your reply, exactly like:
@@ -361,18 +425,17 @@ Only include the JSON block when you actually performed an action; otherwise omi
 Keep the conversational part short and friendly. Never invent ids — use ones present in the snapshot.
 TXT;
 
-    return "You are the assistant inside 'inphub', a personal life dashboard.\n\n{$identity}\n\n"
-        . "Here is a snapshot of the user's current data:\n\n{$snapshot}\n\n{$tools}";
+    return "{$identity}\n\nHere is a snapshot of the user's current data:\n\n{$snapshot}\n\n{$tools}";
 }
 
 /** Recent conversation flattened to a single prompt string. */
-function recent_chat_text(int $uid, string $session = 'default'): string
+function recent_chat_text(int $uid, string $sid): string
 {
     $stmt = db()->prepare(
-        "SELECT role, content FROM chat_messages WHERE user_id=? AND session_id=?
-         ORDER BY id DESC LIMIT 12"
+        'SELECT role, content FROM chat_messages WHERE user_id=? AND session_id=?
+         ORDER BY id DESC LIMIT 12'
     );
-    $stmt->execute([$uid, $session]);
+    $stmt->execute([$uid, $sid]);
     $rows = array_reverse($stmt->fetchAll());
     $out = [];
     foreach ($rows as $r) {
@@ -382,13 +445,13 @@ function recent_chat_text(int $uid, string $session = 'default'): string
     return implode("\n\n", $out);
 }
 
-function save_chat(int $uid, string $role, string $content, ?array $actions, string $session = 'default'): void
+function save_chat(int $uid, string $sid, string $role, string $content, ?array $actions): void
 {
     $stmt = db()->prepare(
-        "INSERT INTO chat_messages (user_id, session_id, role, content, actions)
-         VALUES (?, ?, ?, ?, ?)"
+        'INSERT INTO chat_messages (user_id, session_id, role, content, actions)
+         VALUES (?, ?, ?, ?, ?)'
     );
-    $stmt->execute([$uid, $session, $role, $content, $actions !== null ? json_encode($actions, JSON_UNESCAPED_UNICODE) : null]);
+    $stmt->execute([$uid, $sid, $role, $content, $actions !== null ? json_encode($actions, JSON_UNESCAPED_UNICODE) : null]);
 }
 
 /**
@@ -547,6 +610,15 @@ function execute_chat_action(int $uid, string $tool, array $args): ?string
 
 /* ========================================================= repo analysis */
 
+/** When this repo was last AI-analyzed (newest suggestion timestamp), or null. */
+function repo_last_analyzed(int $uid, int $repoId): ?string
+{
+    $stmt = db()->prepare('SELECT MAX(created_at) FROM repo_suggestions WHERE repo_id=? AND user_id=?');
+    $stmt->execute([$repoId, $uid]);
+    $ts = $stmt->fetchColumn();
+    return is_string($ts) && $ts !== '' ? $ts : null;
+}
+
 function analyze_repo(int $uid, array $repo): array
 {
     $meta = "Repository: {$repo['full_name']}\n"
@@ -564,6 +636,11 @@ function analyze_repo(int $uid, array $repo): array
 
     $raw = ai_generate($uid, $system, $meta, ['max_tokens' => 900]);
     $items = parse_json_array($raw);
+
+    // A garbled model reply must not wipe the previous analysis.
+    if (!$items) {
+        throw new RuntimeException("The model returned no usable suggestions for {$repo['name']} — kept the previous analysis.");
+    }
 
     // Replace previous open suggestions so re-analysis stays tidy.
     db()->prepare("DELETE FROM repo_suggestions WHERE repo_id=? AND user_id=? AND status='open'")->execute([(int) $repo['id'], $uid]);

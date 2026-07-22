@@ -52,7 +52,8 @@ function ai_available(int $userId): bool
 /**
  * Generate a completion. Dispatches to the user's configured provider.
  *
- * @param array $opts  Optional: max_tokens (int), timeout (int seconds).
+ * @param array $opts  Optional: max_tokens (int), timeout (int seconds),
+ *                     model (string — per-call override, does NOT touch settings).
  * @return string  The model's text reply.
  * @throws RuntimeException on any transport/API error.
  */
@@ -62,14 +63,11 @@ function ai_generate(int $userId, string $system, string $userPrompt, array $opt
     $maxTokens = (int) ($opts['max_tokens'] ?? 1024);
     $timeout   = (int) ($opts['timeout'] ?? 60);
 
-    // Optional per-call model override (used by a chat session that picked its
-    // own model). This is never written back to settings.
-    if (isset($opts['model']) && is_string($opts['model']) && $opts['model'] !== '') {
-        if ($c['provider'] === 'ollama') {
-            $c['ollama_model'] = $opts['model'];
-        } else {
-            $c['claude_model'] = $opts['model'];
-        }
+    // Per-call model override (e.g. the chat's session-only selector).
+    $model = isset($opts['model']) && is_string($opts['model']) ? trim($opts['model']) : '';
+    if ($model !== '') {
+        $c['claude_model'] = $model;
+        $c['ollama_model'] = $model;
     }
 
     if ($c['provider'] === 'ollama') {
@@ -79,43 +77,43 @@ function ai_generate(int $userId, string $system, string $userPrompt, array $opt
 }
 
 /**
- * List model names the user's configured provider offers. Ollama is queried
- * live (`/api/tags`); Claude returns a curated list. Best-effort — the
- * currently-configured model is always included, and this never throws.
+ * List models selectable for the user's configured provider.
+ * Ollama: live from GET /api/tags. Claude: a small curated list (the combo box
+ * is editable, so any model id can still be typed).
  *
- * @return array{provider:string, current:string, models:string[]}
+ * @return array{provider:string, default:string, models:string[]}
  */
 function ai_list_models(int $userId): array
 {
     $c = ai_config($userId);
 
     if ($c['provider'] === 'ollama') {
-        $current = $c['ollama_model'];
-        $models  = [];
-        [$status, $body, $err] = ai_http_get(
-            rtrim($c['ollama_base_url'], '/') . '/api/tags',
-            ['content-type: application/json'],
-            15
-        );
-        if ($err === null && $status < 400 && is_array($body) && is_array($body['models'] ?? null)) {
-            foreach ($body['models'] as $m) {
+        $models = [];
+        $base = rtrim($c['ollama_base_url'], '/');
+        $ch = curl_init($base . '/api/tags');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_CONNECTTIMEOUT => 10,
+        ]);
+        $raw = curl_exec($ch);
+        curl_close($ch);
+        if (is_string($raw)) {
+            $body = json_decode($raw, true);
+            foreach ($body['models'] ?? [] as $m) {
                 if (isset($m['name']) && is_string($m['name'])) {
                     $models[] = $m['name'];
                 }
             }
         }
-        if (!$models && $current !== '') {
-            $models = [$current];
-        }
-        return ['provider' => 'ollama', 'current' => $current, 'models' => $models];
+        return ['provider' => 'ollama', 'default' => $c['ollama_model'], 'models' => $models];
     }
 
-    $current = $c['claude_model'];
-    $models  = ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5-20251001', 'claude-fable-5'];
-    if ($current !== '' && !in_array($current, $models, true)) {
-        array_unshift($models, $current);
-    }
-    return ['provider' => 'claude', 'current' => $current, 'models' => $models];
+    return [
+        'provider' => 'claude',
+        'default'  => $c['claude_model'],
+        'models'   => ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
+    ];
 }
 
 /** Low-level Claude Messages API call. */
@@ -215,31 +213,6 @@ function ai_http_post(string $url, array $headers, array $payload, int $timeout)
     ]);
     $raw    = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
-
-    if ($raw === false) {
-        return [0, null, $curlErr ?: 'Connection failed'];
-    }
-    return [$status, json_decode($raw, true), null];
-}
-
-/**
- * Shared cURL GET returning [status, decodedBody, errorOrNull].
- *
- * @return array{0:int,1:mixed,2:?string}
- */
-function ai_http_get(string $url, array $headers, int $timeout): array
-{
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => $headers,
-        CURLOPT_TIMEOUT        => $timeout,
-        CURLOPT_CONNECTTIMEOUT => 10,
-    ]);
-    $raw     = curl_exec($ch);
-    $status  = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlErr = curl_error($ch);
     curl_close($ch);
 

@@ -172,11 +172,21 @@ export function timeAgo(value: string | null | undefined): string {
   return fmtDate(value);
 }
 
-/** Today's date as YYYY-MM-DD (local). */
-export function todayStr(): string {
-  const d = new Date();
+/** A date as YYYY-MM-DD in the *local* timezone (never toISOString — that is UTC). */
+export function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** A datetime as YYYY-MM-DD HH:MM:SS in the *local* timezone (matches MySQL DATETIME). */
+export function localDateTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${localDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** Today's date as YYYY-MM-DD (local). */
+export function todayStr(): string {
+  return localDate(new Date());
 }
 
 /** Current month as YYYY-MM (local). */
@@ -348,15 +358,27 @@ export function emptyState(icon: string, message: string): string {
   return `<div class="empty"><div class="big">${escapeHtml(icon)}</div><div>${escapeHtml(message)}</div></div>`;
 }
 
-/** Delegate clicks within a root to elements matching [data-action]. */
-export function onAction(
-  root: HTMLElement,
-  handler: (action: string, el: HTMLElement, ev: Event) => void,
-): void {
+type ActionHandler = (action: string, el: HTMLElement, ev: Event) => void;
+
+/** Current handler per root — lets onAction() replace instead of stack. */
+const actionHandlers = new WeakMap<HTMLElement, ActionHandler>();
+
+/**
+ * Delegate clicks within a root to elements matching [data-action].
+ * Idempotent: the view containers are persistent nodes that get re-rendered
+ * (innerHTML swapped) many times, so calling this again *replaces* the
+ * previous handler rather than adding another listener — otherwise one click
+ * would fire N stacked handlers (duplicate modals, duplicate API calls).
+ */
+export function onAction(root: HTMLElement, handler: ActionHandler): void {
+  const bindOnce = !actionHandlers.has(root);
+  actionHandlers.set(root, handler);
+  if (!bindOnce) return;
+
   root.addEventListener('click', (ev) => {
     const target = (ev.target as HTMLElement).closest<HTMLElement>('[data-action]');
     if (target && root.contains(target)) {
-      handler(target.dataset.action!, target, ev);
+      actionHandlers.get(root)?.(target.dataset.action!, target, ev);
     }
   });
 }

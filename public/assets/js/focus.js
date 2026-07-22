@@ -3,12 +3,17 @@
  * sessions to focus.php, plus today's total and a 7-day bar chart.
  */
 import { apiGet, apiPost } from './api.js';
-import { escapeHtml, fmtDate, timeAgo, emptyState, toast } from './ui.js';
+import { escapeHtml, fmtDate, timeAgo, emptyState, toast, localDateTime } from './ui.js';
 let remaining = 25 * 60; // seconds
 let planned = 25 * 60;
 let running = false;
 let ticker = 0;
 let startedAt = null;
+let sessionLabel = '';
+/** The live view container — the timer outlives navigation, captured nodes don't. */
+function view() {
+    return document.getElementById('view-focus');
+}
 export async function renderFocus(container) {
     container.innerHTML = `
     <div class="view-head"><h2>Focus</h2></div>
@@ -53,58 +58,76 @@ export async function renderFocus(container) {
     });
     startstop.addEventListener('click', () => {
         if (running) {
-            stop(container, false);
+            stop(false);
         }
         else {
-            start(container);
+            start();
         }
     });
     container.querySelector('[data-role="reset"]').addEventListener('click', () => {
         if (running)
-            stop(container, false);
+            stop(false);
         remaining = planned;
         paint();
     });
     paint();
+    // A session may still be ticking from before a navigation — reflect it.
+    if (running) {
+        startstop.textContent = 'Pause';
+        startstop.classList.remove('btn-primary');
+        const labelEl = container.querySelector('[data-role="label"]');
+        if (labelEl)
+            labelEl.value = sessionLabel;
+    }
     await loadStats(container);
 }
-function start(container) {
+function start() {
     running = true;
-    startedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const btn = container.querySelector('[data-role="startstop"]');
-    const display = container.querySelector('[data-role="display"]');
-    btn.textContent = 'Pause';
-    btn.classList.remove('btn-primary');
+    startedAt = localDateTime(new Date());
+    sessionLabel = view()?.querySelector('[data-role="label"]')?.value.trim() ?? '';
+    const btn = view()?.querySelector('[data-role="startstop"]');
+    if (btn) {
+        btn.textContent = 'Pause';
+        btn.classList.remove('btn-primary');
+    }
     ticker = window.setInterval(() => {
         remaining--;
         const m = Math.floor(remaining / 60);
         const s = ((remaining % 60) + 60) % 60;
-        display.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        const display = view()?.querySelector('[data-role="display"]');
+        if (display)
+            display.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
         if (remaining <= 0) {
-            stop(container, true);
+            stop(true);
             toast('Session complete — nice work.', 'good');
         }
     }, 1000);
 }
-async function stop(container, completed) {
+async function stop(completed) {
     clearInterval(ticker);
     running = false;
-    const btn = container.querySelector('[data-role="startstop"]');
-    btn.textContent = 'Start';
-    btn.classList.add('btn-primary');
+    const root = view();
+    const btn = root?.querySelector('[data-role="startstop"]');
+    if (btn) {
+        btn.textContent = 'Start';
+        btn.classList.add('btn-primary');
+    }
     const elapsedSecs = planned - Math.max(0, remaining);
     const minutes = Math.round(elapsedSecs / 60);
     if (minutes >= 1) {
-        const label = container.querySelector('[data-role="label"]').value.trim();
+        // Prefer the live input (still editable mid-session); fall back to the
+        // label captured at start if the view was navigated away and rebuilt.
+        const label = root?.querySelector('[data-role="label"]')?.value.trim() ?? sessionLabel;
         try {
             await apiPost('focus', 'log', {
                 label: label || null,
                 duration_minutes: minutes,
                 started_at: startedAt,
-                ended_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+                ended_at: localDateTime(new Date()),
                 completed: completed ? 1 : 0,
             });
-            await loadStats(container);
+            if (root)
+                await loadStats(root);
         }
         catch (e) {
             toast(e instanceof Error ? e.message : 'Could not log session', 'bad');

@@ -35,6 +35,11 @@ let filtered: Command[] = [];
 let active = 0;
 let chatEnabled = false;
 
+/** Update chat availability without re-binding listeners (AI toggled in Settings). */
+export function setPaletteChat(chat: boolean): void {
+  chatEnabled = chat;
+}
+
 export function initPalette(opts: { chat: boolean }): void {
   chatEnabled = opts.chat;
   palette = document.getElementById('palette');

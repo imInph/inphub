@@ -4,7 +4,9 @@
  *
  *   GET ?action=json          everything the user owns, as one JSON file
  *   GET ?action=expenses_csv  the expenses ledger as CSV
- *   GET ?action=todos_txt     the to-do list as a numbered plain-text file
+ *   GET ?action=todos_md      the to-do list as Markdown
+ *   GET ?action=todos_csv     the to-do list as CSV
+ *   GET ?action=todos_json    the to-do list as JSON
  *
  * Unlike the /api/* JSON endpoints this streams a file with a download header,
  * so it uses the page-style auth guard (redirect to login) rather than 401.
@@ -43,46 +45,62 @@ if ($action === 'expenses_csv') {
     exit;
 }
 
-if (in_array($action, ['todos_txt', 'todos_md', 'todos_csv'], true)) {
-    // Optional status filter; 'open' means the not-done/not-archived tasks.
-    $rows = todos_for_export($uid, $_GET['status'] ?? 'open');
+if (str_starts_with($action, 'todos_')) {
+    $stmt = db()->prepare(
+        'SELECT title, description, status, priority, project, tags, due_date,
+                recurring, created_at, completed_at
+         FROM todos WHERE user_id = ?
+         ORDER BY (status="done"), sort_order ASC, (due_date IS NULL), due_date ASC, id DESC'
+    );
+    $stmt->execute([$uid]);
+    $todos = $stmt->fetchAll();
 
     if ($action === 'todos_csv') {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="inphub-todos-' . $stamp . '.csv"');
         $out = fopen('php://output', 'w');
-        fputcsv($out, ['number', 'title', 'status', 'completed_at']);
-        $n = 0;
-        foreach ($rows as $row) {
-            fputcsv($out, [++$n, $row['title'], $row['status'], $row['completed_at'] ?? '']);
+        fputcsv($out, ['title', 'description', 'status', 'priority', 'project', 'tags', 'due_date', 'recurring', 'created_at', 'completed_at']);
+        foreach ($todos as $row) {
+            fputcsv($out, $row);
         }
         fclose($out);
         exit;
     }
 
-    if ($action === 'todos_md') {
-        $lines = ['# To-Do — ' . $stamp, ''];
-        $n = 0;
-        foreach ($rows as $row) {
-            $box  = $row['status'] === 'done' ? '[x]' : '[ ]';
-            $done = !empty($row['completed_at']) ? ' _(completed ' . substr((string) $row['completed_at'], 0, 10) . ')_' : '';
-            $lines[] = (++$n) . '. ' . $box . ' ' . $row['title'] . ' — ' . $row['status'] . $done;
-        }
-        header('Content-Type: text/markdown; charset=utf-8');
-        header('Content-Disposition: attachment; filename="inphub-todos-' . $stamp . '.md"');
-        echo implode("\r\n", $lines) . "\r\n";
+    if ($action === 'todos_json') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="inphub-todos-' . $stamp . '.json"');
+        echo json_encode(['exported_at' => date('c'), 'todos' => $todos], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 
-    // Default: plain-text numbered list (titles only).
-    $lines = [];
-    $n = 0;
-    foreach ($rows as $row) {
-        $lines[] = (++$n) . '. ' . $row['title'];
+    // Default: Markdown checklist grouped by status.
+    $groups = ['todo' => [], 'in_progress' => [], 'done' => [], 'archived' => []];
+    foreach ($todos as $t) {
+        $groups[$t['status']][] = $t;
     }
-    header('Content-Type: text/plain; charset=utf-8');
-    header('Content-Disposition: attachment; filename="inphub-todos-' . $stamp . '.txt"');
-    echo implode("\r\n", $lines) . ($lines ? "\r\n" : '');
+    $labels = ['todo' => 'To do', 'in_progress' => 'In progress', 'done' => 'Done', 'archived' => 'Archived'];
+
+    $md = "# inphub — To-Do list ($stamp)\n";
+    foreach ($groups as $status => $items) {
+        if (!$items) {
+            continue;
+        }
+        $md .= "\n## {$labels[$status]}\n\n";
+        foreach ($items as $t) {
+            $box  = $status === 'done' || $status === 'archived' ? 'x' : ' ';
+            $meta = [];
+            if ($t['priority'] !== 'medium') $meta[] = $t['priority'];
+            if ($t['project'] !== null && $t['project'] !== '') $meta[] = $t['project'];
+            if ($t['due_date'] !== null) $meta[] = 'due ' . $t['due_date'];
+            if ($t['completed_at'] !== null) $meta[] = 'completed ' . substr($t['completed_at'], 0, 10);
+            $md .= "- [$box] " . $t['title'] . ($meta ? ' _(' . implode(' · ', $meta) . ')_' : '') . "\n";
+        }
+    }
+
+    header('Content-Type: text/markdown; charset=utf-8');
+    header('Content-Disposition: attachment; filename="inphub-todos-' . $stamp . '.md"');
+    echo $md;
     exit;
 }
 
@@ -90,9 +108,9 @@ if (in_array($action, ['todos_txt', 'todos_md', 'todos_csv'], true)) {
 $tables = [
     'todos', 'expense_categories', 'expenses', 'repos', 'repo_suggestions',
     'habits', 'habit_logs', 'goals', 'notes', 'focus_sessions', 'activity_log',
-    'daily_briefs', 'chat_messages', 'settings',
+    'daily_briefs', 'chat_messages', 'chat_sessions', 'settings',
 ];
-$data = ['exported_at' => date('c'), 'user_id' => $uid];
+$data = ['inphub_version' => INPHUB_VERSION, 'exported_at' => date('c'), 'user_id' => $uid];
 foreach ($tables as $table) {
     // $table comes only from the whitelist above — never from user input.
     $stmt = db()->prepare("SELECT * FROM `$table` WHERE user_id = ?");
@@ -104,27 +122,3 @@ header('Content-Type: application/json; charset=utf-8');
 header('Content-Disposition: attachment; filename="inphub-export-' . $stamp . '.json"');
 echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 exit;
-
-/**
- * The user's todos for export, filtered by status ('open' = todo+in_progress,
- * a specific status, or anything else = all), ordered like the app's list.
- *
- * @return array<int,array{title:string,status:string,completed_at:?string}>
- */
-function todos_for_export(int $uid, string $filter): array
-{
-    $order = "ORDER BY (due_date IS NULL), due_date ASC, FIELD(priority,'urgent','high','medium','low'), id ASC";
-    if ($filter === 'open') {
-        $stmt = db()->prepare("SELECT title, status, completed_at FROM todos
-            WHERE user_id = ? AND status IN ('todo','in_progress') $order");
-        $stmt->execute([$uid]);
-    } elseif (in_array($filter, ['todo', 'in_progress', 'done', 'archived'], true)) {
-        $stmt = db()->prepare("SELECT title, status, completed_at FROM todos
-            WHERE user_id = ? AND status = ? $order");
-        $stmt->execute([$uid, $filter]);
-    } else {
-        $stmt = db()->prepare('SELECT title, status, completed_at FROM todos WHERE user_id = ? ORDER BY id ASC');
-        $stmt->execute([$uid]);
-    }
-    return $stmt->fetchAll();
-}

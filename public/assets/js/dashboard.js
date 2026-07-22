@@ -5,7 +5,11 @@ import { apiGet, apiPost } from './api.js';
 import { escapeHtml, money, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, } from './ui.js';
 import { go, aiAvailable } from './app.js';
 let shortcuts = [];
+/** In-flight brief generation — aborted on re-render/navigation, guards re-entry. */
+let briefCtl = null;
 export async function renderDashboard(container) {
+    briefCtl?.abort();
+    briefCtl = null;
     container.innerHTML = `<div class="empty">Loading…</div>`;
     const d = await apiGet('stats', 'dashboard');
     const cur = d.currency || 'TRY';
@@ -134,41 +138,52 @@ function briefCard(content) {
     return `<section class="card">
     <div class="card-head"><h3>Daily brief</h3>
       <span>
-        ${content ? '<button class="btn btn-ghost btn-sm" data-action="clear-brief">Clear</button>' : ''}
+        ${content ? '<button class="btn btn-ghost btn-sm" data-action="clear-brief">🗑 Clear</button>' : ''}
         <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? '↻ Regenerate' : '✨ Generate'}</button>
       </span>
     </div>
-    ${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">Generate an AI summary of your day.</div>'}
+    <div class="card-scroll">${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">Generate an AI summary of your day.</div>'}</div>
   </section>`;
 }
 async function clearBrief(container) {
+    const host = container.querySelector('[data-role="brief"]');
+    if (!host)
+        return;
     try {
         await apiPost('ai', 'clear_brief', {});
-        loadBrief(container); // re-renders as the empty "Generate" state
+        host.innerHTML = briefCard(null);
     }
     catch (e) {
         toast(e instanceof Error ? e.message : 'Failed', 'bad');
     }
 }
-let briefBusy = false;
 async function generateBrief(container) {
     const host = container.querySelector('[data-role="brief"]');
-    if (!host || briefBusy)
-        return; // guard: exactly one request in flight
-    briefBusy = true;
-    host.querySelector('[data-action="gen-brief"]')?.setAttribute('disabled', '');
+    if (!host)
+        return;
+    if (briefCtl)
+        return; // one request at a time — the button is also disabled
+    const btn = host.querySelector('[data-action="gen-brief"]');
+    if (btn)
+        btn.disabled = true;
+    briefCtl = new AbortController();
     host.querySelector('.md, .text-dim')?.replaceChildren();
     host.querySelector('.card-head')?.insertAdjacentHTML('afterend', '<div class="text-dim" data-role="thinking">Thinking…</div>');
     try {
-        const res = await apiPost('ai', 'generate_brief', {});
+        const res = await apiPost('ai', 'generate_brief', {}, { signal: briefCtl.signal });
         host.innerHTML = briefCard(res.brief.content);
     }
     catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError')
+            return; // navigated away
         toast(e instanceof Error ? e.message : 'Failed', 'bad');
         loadBrief(container);
     }
     finally {
-        briefBusy = false;
+        briefCtl = null;
+        const b = host.querySelector('[data-action="gen-brief"]');
+        if (b)
+            b.disabled = false;
     }
 }
 function cardTodos(todos) {
@@ -253,7 +268,6 @@ function cardActivity(items) {
 }
 /* ---------------------------------------------------------------- helpers */
 function card(title, view, body) {
-    // The header stays put; only .card-scroll (the content) caps + scrolls (5.1).
     return `<section class="card">
     <div class="card-head"><h3>${escapeHtml(title)}</h3>
       <button class="btn btn-ghost btn-sm" data-action="goto" data-view="${escapeHtml(view)}">Open →</button></div>

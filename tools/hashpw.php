@@ -14,12 +14,22 @@
 
 declare(strict_types=1);
 
-if ($argc < 2 || trim((string) $argv[1]) === '') {
+if (PHP_SAPI === 'cli') {
+    $input = $argv[1] ?? '';
+} else {
+    $input = $_GET['input'] ?? '';
+}
+
+if (trim($input) === '') {
+    exit("No input provided.");
+}
+
+if (trim((string)$input) === '') {
     fwrite(STDERR, "Usage: php tools/hashpw.php \"the password\"\n");
     exit(1);
 }
 
-$hash = password_hash($argv[1], PASSWORD_DEFAULT);
+$hash = password_hash($input, PASSWORD_DEFAULT);
 if ($hash === false) {
     fwrite(STDERR, "Hashing failed.\n");
     exit(1);
