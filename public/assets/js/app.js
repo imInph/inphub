@@ -198,7 +198,6 @@ function init() {
     greet();
     tick();
     setInterval(tick, 1000);
-    document.getElementById('btn-theme')?.addEventListener('click', toggleTheme);
     // Mobile nav drawer (hamburger is only visible at the small breakpoint).
     const sidebar = document.querySelector('.sidebar');
     const navBackdrop = document.getElementById('nav-backdrop');
@@ -207,11 +206,25 @@ function init() {
         if (navBackdrop)
             navBackdrop.hidden = !open;
     };
-    document.getElementById('btn-nav')?.addEventListener('click', () => setDrawer(!sidebar?.classList.contains('open')));
-    navBackdrop?.addEventListener('click', () => setDrawer(false));
-    sidebar?.addEventListener('click', (e) => {
+    // Topbar + drawer clicks are delegated through one document-level listener
+    // (bound once, immune to element timing/re-creation), matching the
+    // delegation pattern used by the views via onAction().
+    document.addEventListener('click', (e) => {
+        const t = e.target;
+        if (t.closest('#btn-theme')) {
+            toggleTheme();
+            return;
+        }
+        if (t.closest('#btn-nav')) {
+            setDrawer(!sidebar?.classList.contains('open'));
+            return;
+        }
+        if (t.closest('#nav-backdrop')) {
+            setDrawer(false);
+            return;
+        }
         // Navigating or using a footer action closes the drawer.
-        if (e.target.closest('.nav-item, .sidebar-foot .btn'))
+        if (t.closest('.sidebar .nav-item, .sidebar .sidebar-foot .btn'))
             setDrawer(false);
     });
     document.querySelectorAll('.nav-item').forEach((el) => {
@@ -229,6 +242,9 @@ function init() {
     activate(initial);
     // AI is optional: only wire chat + reveal its button once we know it's configured.
     setupAi();
+    // Deploy sanity stamp: if this line is missing from the console, the browser
+    // is running a stale app.js (bad copy or cache) — see CLAUDE.md deploy notes.
+    console.info('[inphub] shell ready — delegated chrome listeners active (build 2026-07-19)');
 }
 let chatInited = false;
 /**

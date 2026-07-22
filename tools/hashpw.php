@@ -6,6 +6,7 @@
  * plaintext password into a bcrypt hash you can paste into an INSERT:
  *
  *   php tools/hashpw.php "thePassword"
+ *   (or in a browser: tools/hashpw.php?input=thePassword)
  *
  * Then:
  *   INSERT INTO users (username, password_hash, display_name, role, is_active)
@@ -20,19 +21,16 @@ if (PHP_SAPI === 'cli') {
     $input = $_GET['input'] ?? '';
 }
 
-if (trim($input) === '') {
-    exit("No input provided.");
+if (trim((string) $input) === '') {
+    exit(PHP_SAPI === 'cli'
+        ? "Usage: php tools/hashpw.php \"the password\"\n"
+        : 'No input provided.');
 }
 
-if (trim((string)$input) === '') {
-    fwrite(STDERR, "Usage: php tools/hashpw.php \"the password\"\n");
-    exit(1);
-}
-
-$hash = password_hash($input, PASSWORD_DEFAULT);
+$hash = password_hash((string) $input, PASSWORD_DEFAULT);
 if ($hash === false) {
-    fwrite(STDERR, "Hashing failed.\n");
-    exit(1);
+    // STDERR only exists in CLI, so keep the error path SAPI-agnostic.
+    exit('Hashing failed.');
 }
 
 echo $hash, PHP_EOL;

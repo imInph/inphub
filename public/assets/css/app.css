@@ -409,7 +409,11 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
         height: 100dvh; overflow-y: auto;
     }
     .sidebar.open { transform: none; box-shadow: var(--shadow); }
-    .nav-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 65; }
+    /* cursor:pointer makes iOS Safari deliver taps on this plain div to the
+       document-level delegated click handler (it ignores non-interactive
+       elements otherwise) — without it, tapping the backdrop wouldn't close
+       the drawer on iPhones. */
+    .nav-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 65; cursor: pointer; }
     .nav-backdrop[hidden] { display: none; }
 
     .topbar { padding: 10px 14px; }

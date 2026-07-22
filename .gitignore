@@ -4,9 +4,15 @@ config/config.php
 # Dependencies
 node_modules/
 
+# Compiled output — run `npm run build` to regenerate
+public/assets/js/
+
 # Editor / OS cruft
 .DS_Store
 Thumbs.db
 *.log
 .idea/
 .vscode/
+
+# Environment files
+.env

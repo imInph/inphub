@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 /** App version — bump on release. Shown in the sidebar, login page, and export dumps. */
-const INPHUB_VERSION = '1.0.0';
+const INPHUB_VERSION = '1.0.1';
 
 /**
  * Emit a JSON response using the app-wide envelope and stop.

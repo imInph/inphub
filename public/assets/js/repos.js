@@ -11,7 +11,7 @@ export async function renderRepos(container) {
     <div class="view-head">
       <h2>Repositories</h2>
       <div class="toolbar">
-        ${aiAvailable ? '<button class="btn" data-action="analyze-stale">✨ Analyze stale</button>' : ''}
+        ${aiAvailable ? `<button class="btn" data-action="analyze-stale" title="Runs AI analysis on every repo untouched for ${staleDays}+ days and saves suggestions to each repo's Details.">✨ Analyze stale</button>` : ''}
         <button class="btn btn-primary" data-action="sync">↻ Sync from GitHub</button>
       </div>
     </div>
