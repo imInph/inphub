@@ -45,7 +45,13 @@ $nav = [
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>inphub</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="assets/css/app.css">
+    <?php
+        // Cache-bust CSS/JS by file mtime so a copied-in update is never served
+        // stale from the browser cache.
+        $cssVer = @filemtime(__DIR__ . '/assets/css/app.css') ?: time();
+        $jsVer  = @filemtime(__DIR__ . '/assets/js/app.js') ?: time();
+    ?>
+    <link rel="stylesheet" href="assets/css/app.css?v=<?= $cssVer ?>">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
     <script>window.INPHUB = <?= json_encode($boot, JSON_UNESCAPED_UNICODE) ?>;</script>
 </head>
@@ -97,6 +103,6 @@ $nav = [
     <!-- Toast host -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script type="module" src="assets/js/app.js"></script>
+    <script type="module" src="assets/js/app.js?v=<?= $jsVer ?>"></script>
 </body>
 </html>

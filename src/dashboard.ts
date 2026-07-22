@@ -42,6 +42,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
       <div class="toolbar"><span class="chip">${escapeHtml(d.money.month)}</span></div>
     </div>
     <form class="dash-search" action="https://www.google.com/search" method="get" target="_self">
+      <span class="dash-search-ico">🔍</span>
       <input type="text" name="q" placeholder="Search Google…" autocomplete="off" spellcheck="false" data-role="search">
     </form>
     ${aiAvailable ? '<div data-role="brief" style="margin-bottom:16px"></div>' : ''}
@@ -79,7 +80,11 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
 /* -------------------------------------------------------------- shortcuts */
 
 function renderShortcuts(): string {
-  const tiles = shortcuts.map((s, i) => {
+  if (!shortcuts.length) {
+    return `<div class="text-dim" style="grid-column:1/-1;padding:8px 2px">
+      No shortcuts yet — use “+ Add site” to pin the sites you open most.</div>`;
+  }
+  return shortcuts.map((s, i) => {
     let host = '';
     try {
       host = new URL(s.url).hostname;
@@ -95,9 +100,7 @@ function renderShortcuts(): string {
       <span class="sc-name">${escapeHtml(s.name)}</span>
       <button class="shortcut-del" data-action="del-shortcut" data-idx="${i}" title="Remove">✕</button>
     </a>`;
-  });
-  tiles.push(`<button class="shortcut shortcut-add" data-action="add-shortcut" title="Add shortcut">＋</button>`);
-  return tiles.join('');
+  }).join('');
 }
 
 function addShortcut(container: HTMLElement): void {
@@ -249,7 +252,7 @@ function cardGoals(goals: DashGoal[]): string {
 
 function cardActivity(items: DashActivity[]): string {
   const body = items.length
-    ? `<div class="list">${items.map((a) => `
+    ? `<div class="list" style="max-height:260px;overflow-y:auto">${items.map((a) => `
         <div class="row" style="border:none;padding:4px 0;background:none">
           <span class="grow">${escapeHtml(a.summary)}</span>
           <span class="muted">${a.actor === 'ai' ? '🤖 ' : ''}${escapeHtml(timeAgo(a.created_at))}</span>
