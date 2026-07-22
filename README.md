@@ -1,6 +1,6 @@
 # inphub
 
-**v1.0.1**
+**v1.0.2**
 
 A personal life-dashboard — expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
 and an activity history — behind a hand-provisioned login, with an **optional** AI layer (Claude or

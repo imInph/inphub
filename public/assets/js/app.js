@@ -206,24 +206,21 @@ function init() {
         if (navBackdrop)
             navBackdrop.hidden = !open;
     };
-    // Topbar + drawer clicks are delegated through one document-level listener
-    // (bound once, immune to element timing/re-creation), matching the
-    // delegation pattern used by the views via onAction().
+    // The theme button, hamburger, and drawer backdrop are wired through inline
+    // onclick attributes in index.php that call these globals. This is DOM
+    // level-0 on purpose: in the owner's environment BOTH direct addEventListener
+    // bindings and a document-level delegated listener silently never fired for
+    // these buttons (likely an extension wrapping addEventListener), while inline
+    // handlers cannot be intercepted that way. Keep it this way.
+    window.inphubToggleTheme = () => {
+        void toggleTheme();
+    };
+    window.inphubDrawer = (open) => {
+        setDrawer(open !== undefined ? open : !sidebar?.classList.contains('open'));
+    };
+    // Navigating or using a footer action closes the drawer.
     document.addEventListener('click', (e) => {
         const t = e.target;
-        if (t.closest('#btn-theme')) {
-            toggleTheme();
-            return;
-        }
-        if (t.closest('#btn-nav')) {
-            setDrawer(!sidebar?.classList.contains('open'));
-            return;
-        }
-        if (t.closest('#nav-backdrop')) {
-            setDrawer(false);
-            return;
-        }
-        // Navigating or using a footer action closes the drawer.
         if (t.closest('.sidebar .nav-item, .sidebar .sidebar-foot .btn'))
             setDrawer(false);
     });
@@ -244,7 +241,7 @@ function init() {
     setupAi();
     // Deploy sanity stamp: if this line is missing from the console, the browser
     // is running a stale app.js (bad copy or cache) — see CLAUDE.md deploy notes.
-    console.info('[inphub] shell ready — delegated chrome listeners active (build 2026-07-19)');
+    console.info('[inphub] shell ready — inline chrome handlers active (build 2026-07-19-2)');
 }
 let chatInited = false;
 /**

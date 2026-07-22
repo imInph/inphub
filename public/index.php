@@ -84,18 +84,21 @@ $nav = [
                 <a class="btn btn-ghost" href="logout.php">Log out</a>
             </div>
         </aside>
-        <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+        <div class="nav-backdrop" id="nav-backdrop" hidden
+             onclick="window.inphubDrawer&&window.inphubDrawer(false)"></div>
 
         <!-- Main -->
         <main class="main">
             <header class="topbar">
                 <div class="topbar-left">
-                    <button class="btn btn-ghost hamburger" id="btn-nav" aria-label="Open menu">☰</button>
+                    <button class="btn btn-ghost hamburger" id="btn-nav" aria-label="Open menu"
+                            onclick="window.inphubDrawer&&window.inphubDrawer()">☰</button>
                     <div id="greeting" class="greeting"></div>
                 </div>
                 <div class="topbar-right">
                     <div id="clock" class="clock"></div>
-                    <button class="btn btn-ghost" id="btn-theme" title="Toggle theme">◐</button>
+                    <button class="btn btn-ghost" id="btn-theme" title="Toggle theme"
+                            onclick="window.inphubToggleTheme&&window.inphubToggleTheme()">◐</button>
                 </div>
             </header>
 

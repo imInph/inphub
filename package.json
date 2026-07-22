@@ -1,6 +1,6 @@
 {
   "name": "inphub",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Personal life-dashboard (expenses, repos, todos, habits, goals, notes, focus) — PHP + MySQL backend, TypeScript frontend.",
   "type": "module",
