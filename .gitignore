@@ -1,3 +1,12 @@
-.claude/
-CLAUDE.md
-inphub-claude-code-prompt*.md
+# Local DB credentials (copy from config.example.php)
+config/config.php
+
+# Dependencies
+node_modules/
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
