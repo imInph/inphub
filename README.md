@@ -1,36 +1,36 @@
 # inphub
 
-**v1.1.0** · MIT licensed
+**v1.1.0**, MIT licensed
 
-A personal life-dashboard — expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
-and an activity history — behind a hand-provisioned login, with an **optional** AI layer (Claude or
-a local Ollama). Plain PHP 8 backend (no framework), TypeScript frontend compiled to plain ES
-modules (no React, no bundler). Runs locally on XAMPP.
+A personal life-dashboard: expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
+and an activity history, all behind a hand-provisioned login, with an **optional** AI layer
+(Claude or a local Ollama). Plain PHP 8 backend (no framework), TypeScript frontend compiled to
+plain ES modules (no React, no bundler). Runs locally on XAMPP.
 
 ## Requirements
 
 - PHP 8.2+ with PDO MySQL, cURL and mbstring (XAMPP bundles these)
 - MySQL / MariaDB
-- Node.js 18+ **on a dev machine** — only needed to compile the TypeScript once
+- Node.js 18+ **on a dev machine**, only needed to compile the TypeScript once
 
 ## Setup (dev machine)
 
 ```bash
-# 1. Database — imports schema + seeds admin "admin" / "changeme"
+# 1. Database: imports schema + seeds admin "admin" / "changeme"
 mysql -u root < inphub.sql            # or import inphub.sql via phpMyAdmin
 
-# 2. Config — DB creds only; default XAMPP values work as-is
+# 2. Config: DB creds only, default XAMPP values work as-is
 cp config/config.example.php config/config.php
 
-# 3. Frontend — compile src/*.ts → public/assets/js/*.js
+# 3. Frontend: compile src/*.ts into public/assets/js/*.js
 npm install
 npm run build                         # or: npm run watch  (recompiles on save)
 ```
 
 Then open **http://localhost/inphub/public/** and log in with `admin` / `changeme`.
-**Change that password immediately** — it is a publicly documented default.
+**Change that password immediately**, it is a publicly documented default.
 
-> The compiled JS in `public/assets/js/` is **git-ignored / not committed** — you must run
+> The compiled JS in `public/assets/js/` is **git-ignored / not committed**, so you must run
 > `npm run build` at least once before the app shell works. `login.php` is server-rendered, so
 > logging in works even before the build, but the dashboard needs the compiled modules.
 
@@ -61,23 +61,26 @@ VALUES ('someone', '<paste-hash>', 'Some One', 'user', 1);
 
 On first login the app seeds that user's default settings, expense categories, and habits
 (mirroring what `inphub.sql` gives user 1). Admins can also activate/deactivate accounts from
-**Settings → Accounts**.
+**Settings > Accounts**.
 
 ## AI layer (optional)
 
-Off by default. In **Settings → AI assistant**, enable it and choose a provider:
+Off by default. In **Settings > AI assistant**, enable it and choose a provider:
 
-- **Claude** — paste an Anthropic API key; default model `claude-sonnet-5`.
-- **Ollama** — point at a local instance (default `http://localhost:11434`) and a pulled model.
+- **Claude**: paste an Anthropic API key, default model `claude-sonnet-5`.
+- **Ollama**: point at a local instance (default `http://localhost:11434`) and a pulled model.
 
 Use **Test connection** to verify. Every AI-initiated change is written to the activity log with
 `actor = ai`.
+
+To unlock the chat's developer mode for your own account, add `'developer_user' => 'yourname'`
+to `config/config.php`. Leaving it empty (the default) disables it for everyone.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `npm run build` | Compile `src/*.ts` → `public/assets/js/` |
+| `npm run build` | Compile `src/*.ts` into `public/assets/js/` |
 | `npm run watch` | Recompile on change |
 | `php -l <file>` | Syntax-check a PHP file (no test suite) |
 | `php tools/hashpw.php "pw"` | Print a bcrypt hash for a new user |
@@ -88,14 +91,14 @@ Use **Test connection** to verify. Every AI-initiated change is written to the a
 config/   DB credentials (config.php is git-ignored)
 db/       PDO singleton
 lib/      shared backend (auth, helpers, provisioning, activity, github, ai)
-api/      JSON endpoints — every one guarded + scoped to the logged-in user
+api/      JSON endpoints, every one guarded + scoped to the logged-in user
 public/   web root (app shell, login, compiled assets, css)
 src/      TypeScript source
 tools/    CLI helpers (hashpw)
 ```
 
-Every `/api/*` endpoint returns one envelope — `{ "ok": true, "data": … }` on success,
-`{ "ok": false, "error": "…" }` on failure — and scopes all queries to the logged-in user.
+Every `/api/*` endpoint returns one envelope, `{ "ok": true, "data": ... }` on success or
+`{ "ok": false, "error": "..." }` on failure, and scopes all queries to the logged-in user.
 
 ## Security notes
 
@@ -103,11 +106,11 @@ Every `/api/*` endpoint returns one envelope — `{ "ok": true, "data": … }` o
   hashed remember-me token.
 - All SQL uses prepared statements; no user input is ever interpolated into a query.
 - Secrets (GitHub token, Claude key) are stored per-user, rendered in password fields, and
-  **masked on read** — never echoed back in full. They live only in the database, never in a
+  **masked on read**, never echoed back in full. They live only in the database, never in a
   file in this repo.
 
 > **This is built for localhost.** It is a personal tool meant to run on your own machine behind
-> XAMPP, and it has not been hardened for exposure to the internet — there is no rate limiting on
+> XAMPP, and it has not been hardened for exposure to the internet: there is no rate limiting on
 > login and no CSRF tokens. Because the project folder sits inside `htdocs`, files outside
 > `public/` (`inphub.sql`, `db/*.sql`, `tools/hashpw.php`) are reachable over HTTP unless you
 > point the document root at `public/` or block them. Don't put this on a public server as-is.
@@ -116,4 +119,4 @@ There is **no automated test suite**; verification is manual against a running X
 
 ## License
 
-[MIT](LICENSE) — do what you like with it, no warranty.
+[MIT](LICENSE), do what you like with it, no warranty.
