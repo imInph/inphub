@@ -6,7 +6,7 @@
 --  Charset: utf8mb4 (full unicode, emoji-safe)
 --
 --  Accounts are created MANUALLY (no register page). A default
---  admin is seeded below:  username = imInph  /  password = changeme
+--  admin is seeded below:  username = admin  /  password = changeme
 --  >>> CHANGE THE PASSWORD AFTER FIRST LOGIN. <<<
 --  To add more users, use tools/hashpw.php to make a hash, then
 --  INSERT into `users` (see the template at the bottom of this file).
@@ -349,9 +349,9 @@ CREATE TABLE `settings` (
 --  SEED DATA  (default admin = user id 1)
 -- ============================================================
 
--- Default admin.  username: imInph   password: changeme   (CHANGE IT!)
+-- Default admin.  username: admin   password: changeme   (CHANGE IT!)
 INSERT INTO `users` (`id`,`username`,`password_hash`,`display_name`,`role`,`is_active`) VALUES
-  (1, 'imInph', '$2b$12$3LzH7J8QiWf2Eu7WWhF9ie20SZhq24ds0zC39481xEx58PduyEKBq', 'Kaevo', 'admin', 1);
+  (1, 'admin', '$2y$12$kYryWpgZ7wIQh44/q4.gUeDwurIhPywkjBfkLSZQN2ardmU.ZFIva', 'Admin', 'admin', 1);
 
 INSERT INTO `expense_categories` (`user_id`,`name`,`color`,`icon`,`monthly_budget`) VALUES
   (1,'Food & Drink',   '#f97316', '🍔', NULL),
@@ -373,8 +373,8 @@ INSERT INTO `habits` (`user_id`,`name`,`description`,`frequency`,`target_per_per
 INSERT INTO `settings` (`user_id`,`setting_key`,`setting_value`) VALUES
   (1,'theme',            'dark'),
   (1,'base_currency',    'TRY'),
-  (1,'owner_name',       'Kaevo'),
-  (1,'github_username',  'imInph'),
+  (1,'owner_name',       ''),                    -- set in Settings UI
+  (1,'github_username',  ''),                    -- set in Settings UI
   (1,'github_token',     ''),                    -- set in Settings UI
   (1,'stale_repo_days',  '60'),
   (1,'ai_enabled',       '0'),                   -- '0' off, '1' on

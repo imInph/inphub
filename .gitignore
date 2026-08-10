@@ -16,3 +16,28 @@ Thumbs.db
 
 # Environment files
 .env
+
+# Secrets / keys — none of these belong in the repo, ever
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Database dumps & backups (inphub.sql is the schema and IS tracked)
+*.sql.gz
+*.sql.zip
+*-dump.sql
+*-backup.sql
+*.sqlite
+*.sqlite3
+*.bak
+*.old
+*~
+
+# Local AI-assistant scratch
+.claude/settings.local.json
+
+# Design/spec notes kept out of the public repo
+inphub-prompt.md
+inphub-claude-code-prompt.md
+inphub-claude-code-prompt-round2.md

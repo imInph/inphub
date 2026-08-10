@@ -1,6 +1,6 @@
 # inphub
 
-**v1.0.2**
+**v1.1.0** · MIT licensed
 
 A personal life-dashboard — expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
 and an activity history — behind a hand-provisioned login, with an **optional** AI layer (Claude or
@@ -16,7 +16,7 @@ modules (no React, no bundler). Runs locally on XAMPP.
 ## Setup (dev machine)
 
 ```bash
-# 1. Database — imports schema + seeds admin imInph / changeme
+# 1. Database — imports schema + seeds admin "admin" / "changeme"
 mysql -u root < inphub.sql            # or import inphub.sql via phpMyAdmin
 
 # 2. Config — DB creds only; default XAMPP values work as-is
@@ -27,7 +27,8 @@ npm install
 npm run build                         # or: npm run watch  (recompiles on save)
 ```
 
-Then open **http://localhost/inphub/public/** and log in with `imInph` / `changeme`.
+Then open **http://localhost/inphub/public/** and log in with `admin` / `changeme`.
+**Change that password immediately** — it is a publicly documented default.
 
 > The compiled JS in `public/assets/js/` is **git-ignored / not committed** — you must run
 > `npm run build` at least once before the app shell works. `login.php` is server-rendered, so
@@ -102,6 +103,17 @@ Every `/api/*` endpoint returns one envelope — `{ "ok": true, "data": … }` o
   hashed remember-me token.
 - All SQL uses prepared statements; no user input is ever interpolated into a query.
 - Secrets (GitHub token, Claude key) are stored per-user, rendered in password fields, and
-  **masked on read** — never echoed back in full.
+  **masked on read** — never echoed back in full. They live only in the database, never in a
+  file in this repo.
+
+> **This is built for localhost.** It is a personal tool meant to run on your own machine behind
+> XAMPP, and it has not been hardened for exposure to the internet — there is no rate limiting on
+> login and no CSRF tokens. Because the project folder sits inside `htdocs`, files outside
+> `public/` (`inphub.sql`, `db/*.sql`, `tools/hashpw.php`) are reachable over HTTP unless you
+> point the document root at `public/` or block them. Don't put this on a public server as-is.
 
 There is **no automated test suite**; verification is manual against a running XAMPP instance.
+
+## License
+
+[MIT](LICENSE) — do what you like with it, no warranty.

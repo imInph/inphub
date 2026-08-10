@@ -16,4 +16,8 @@ return [
     'db_user'    => 'root',
     'db_pass'    => '',
     'db_charset' => 'utf8mb4',
+
+    // Username that gets the AI chat's "developer mode" (blunt, technical,
+    // talks about the code and schema). Leave empty to disable it entirely.
+    'developer_user' => '',
 ];

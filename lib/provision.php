@@ -19,7 +19,7 @@ function default_settings(): array
         'theme'            => 'dark',
         'base_currency'    => 'TRY',
         'owner_name'       => '',
-        'github_username'  => 'imInph',
+        'github_username'  => '',
         'github_token'     => '',
         'stale_repo_days'  => '60',
         'ai_enabled'       => '0',

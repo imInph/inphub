@@ -370,7 +370,7 @@ function backfill_legacy_session(int $uid): void
  * The single place the chat system prompt is built. Establishes what inphub
  * actually is (a self-hosted personal dashboard — no company, no support
  * team), injects the logged-in username, and appends a developer-mode block
- * for the owner/developer account (imInph).
+ * for the account named by 'developer_user' in config/config.php (empty = off).
  */
 function chat_system_prompt(int $uid): string
 {
@@ -394,7 +394,8 @@ Facts you must never contradict:
 You are talking to "{$display}" (username: {$username}).
 TXT;
 
-    if ($username === 'imInph') {
+    $devUser = trim((string) app_config('developer_user', ''));
+    if ($devUser !== '' && $username === $devUser) {
         $identity .= "\n\n" . <<<TXT
 Developer mode: this user is the sole developer and owner of inphub. Be technical
 and direct. Discuss implementation details, the database schema, and code freely

@@ -15,7 +15,7 @@ require_once __DIR__ . '/../lib/github.php';
 api_handle(function (): void {
     $uid = current_user_id();
 
-    $username = trim((string) get_setting($uid, 'github_username', 'imInph'));
+    $username = trim((string) get_setting($uid, 'github_username', ''));
     $token    = trim((string) get_setting($uid, 'github_token', ''));
     $token    = $token === '' ? null : $token;
 
