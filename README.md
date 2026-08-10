@@ -9,7 +9,7 @@ modules (no React, no bundler). Runs locally on XAMPP.
 
 ## Requirements
 
-- PHP 8.2+ with PDO MySQL and cURL (XAMPP bundles these)
+- PHP 8.2+ with PDO MySQL, cURL and mbstring (XAMPP bundles these)
 - MySQL / MariaDB
 - Node.js 18+ **on a dev machine** — only needed to compile the TypeScript once
 
