@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — password hashing helper.
+ * inphub: password hashing helper.
  *
  * There is no sign-up flow: accounts are added by hand. Use this to turn a
  * plaintext password into a bcrypt hash you can paste into an INSERT:

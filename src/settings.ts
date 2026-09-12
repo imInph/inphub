@@ -1,18 +1,18 @@
 /**
- * inphub — settings: profile, currency, GitHub, stale threshold, AI provider,
+ * inphub: settings: profile, currency, GitHub, stale threshold, AI provider,
  * and (admins only) an account management panel. Secrets arrive masked and are
  * only re-sent when the user actually types a new value.
  */
 
 import { apiGet, apiPost } from './api.js';
-import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti } from './ui.js';
+import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js';
 import { opts } from './todos.js';
 import { boot, aiAvailable, refreshAiAvailability } from './app.js';
 
 const SECRET_UNCHANGED = '••••••••';
 
 interface SettingsPayload {
-  theme: string; base_currency: string; owner_name: string;
+  theme: string; base_currency: string; starting_balance: string; owner_name: string;
   github_username: string; github_token: string; github_token_set: boolean;
   stale_repo_days: string;
   ai_enabled: string; ai_provider: string;
@@ -25,7 +25,7 @@ interface AdminUser {
 }
 
 export async function renderSettings(container: HTMLElement): Promise<void> {
-  container.innerHTML = `<div class="empty">Loading…</div>`;
+  container.innerHTML = `${loadingState()}`;
   const s = await apiGet<SettingsPayload>('settings', 'get');
   const aiOn = s.ai_enabled === '1';
 
@@ -40,6 +40,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
           <label><span>Theme</span><select name="theme">${opts(['dark', 'light'], s.theme || 'dark')}</select></label>
           <label><span>Base currency</span><input name="base_currency" value="${escapeHtml(s.base_currency || 'TRY')}" maxlength="3"></label>
         </div>
+        <label><span>Starting balance</span>
+          <input name="starting_balance" type="number" step="0.01" value="${escapeHtml(s.starting_balance || '0')}">
+          <small class="text-dim">Money you had before you started logging here. Can be negative.</small></label>
       </section>
 
       <section class="card">
@@ -78,17 +81,32 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     </form>
 
     <section class="card" style="margin-top:16px">
+      <div class="card-head"><h3>Password</h3></div>
+      <form data-role="pw-form" class="field-row" style="align-items:flex-end">
+        <label style="flex:1 1 180px"><span>Current password</span>
+          <input name="current" type="password" autocomplete="current-password" required></label>
+        <label style="flex:1 1 180px"><span>New password</span>
+          <input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label style="flex:1 1 180px"><span>Repeat new password</span>
+          <input name="again" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="btn" type="submit">Change</button>
+      </form>
+      <div class="text-dim" style="margin-top:8px;font-size:.82rem">
+        At least 8 characters. Signs out other devices.</div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
       <div class="card-head"><h3>Data</h3></div>
       <div class="toolbar">
-        <a class="btn" href="../api/export.php?action=json">⬇ Export all (JSON)</a>
-        <a class="btn" href="../api/export.php?action=expenses_csv">⬇ Expenses (CSV)</a>
+        <a class="btn" href="../api/export.php?action=json">Export all (JSON)</a>
+        <a class="btn" href="../api/export.php?action=expenses_csv">Expenses (CSV)</a>
       </div>
     </section>
 
     ${aiAvailable ? `<section class="card" style="margin-top:16px">
       <div class="card-head"><h3>Weekly review</h3>
-        <button class="btn btn-sm" data-role="weekly">✨ Generate</button></div>
-      <div data-role="review" class="text-dim">A short AI review of your last 7 days.</div>
+        <button class="btn btn-sm" data-role="weekly">Generate</button></div>
+      <div data-role="review" class="text-dim">AI review of the last 7 days.</div>
     </section>` : ''}
 
     <div data-role="admin"></div>
@@ -103,6 +121,12 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     save(container, form);
   });
 
+  const pwForm = container.querySelector<HTMLFormElement>('[data-role="pw-form"]')!;
+  pwForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void changePassword(pwForm);
+  });
+
   container.querySelector<HTMLButtonElement>('[data-role="test-ai"]')!.addEventListener('click', () => testAi(container));
 
   container.querySelector<HTMLButtonElement>('[data-role="weekly"]')?.addEventListener('click', () => weeklyReview(container));
@@ -114,14 +138,22 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   }
 }
 
-/** Easter egg: pop zoktay.jpg (served from the XAMPP htdocs root) with confetti. */
+/**
+ * Easter egg: pop zoktay.jpg with confetti.
+ *
+ * The image lives at the web-server root, outside this repo, so it is simply
+ * absent on a fresh checkout (and on the dev server). Degrade to a line of
+ * text instead of a broken-image icon, same onerror trick the dashboard
+ * favicons use.
+ */
 function openEasterEgg(): void {
   openModal({
     title: 'zoktay',
     cancelLabel: 'Close',
     confirmLabel: 'Nice',
-    bodyHtml: `<img src="/zoktay.jpg" alt="zoktay.jpg not found in htdocs"
-      style="display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:var(--radius)">`,
+    bodyHtml: `<img src="/zoktay.jpg" alt=""
+      style="display:block;max-width:100%;max-height:60vh;margin:0 auto;border-radius:var(--radius)"
+      onerror="this.insertAdjacentHTML('afterend','<p class=&quot;text-dim&quot; style=&quot;text-align:center&quot;>zoktay.jpg isn\'t in the web root on this machine.</p>');this.remove()">`,
   });
   confetti();
 }
@@ -149,7 +181,7 @@ async function save(container: HTMLElement, form: HTMLFormElement): Promise<void
     await apiPost('settings', 'save', { settings: v });
     toast('Settings saved.', 'good');
     if (v.theme) document.documentElement.setAttribute('data-theme', v.theme);
-    // AI config may have changed — re-check so chat/brief appear or vanish now.
+    // AI config may have changed, re-check so chat/brief appear or vanish now.
     await refreshAiAvailability(false);
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Save failed', 'bad');
@@ -174,6 +206,25 @@ async function testAi(container: HTMLElement): Promise<void> {
 }
 
 /* --------------------------------------------------------------- admin panel */
+
+async function changePassword(form: HTMLFormElement): Promise<void> {
+  const v = formValues(form);
+  if (v.next !== v.again) {
+    toast('The two new passwords do not match.', 'bad');
+    return;
+  }
+  const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  btn.disabled = true;
+  try {
+    await apiPost('auth', 'change_password', { current: v.current, next: v.next });
+    form.reset();
+    toast('Password changed.', 'good');
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Could not change password', 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 async function renderAdmin(container: HTMLElement): Promise<void> {
   const host = container.querySelector<HTMLElement>('[data-role="admin"]')!;
@@ -201,7 +252,7 @@ async function renderAdmin(container: HTMLElement): Promise<void> {
                 ${u.is_active ? 'Deactivate' : 'Activate'}</button></td>
             </tr>`).join('')}</tbody>
         </table>
-        <p class="text-dim" style="margin-top:10px">New accounts are added by hand — hash a password with
+        <p class="text-dim" style="margin-top:10px">New accounts are added by hand. Hash a password with
           <code>php tools/hashpw.php "pw"</code> and insert a <code>users</code> row.</p>
       </section>`;
 

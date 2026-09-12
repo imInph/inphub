@@ -1,5 +1,5 @@
 /**
- * inphub — typed fetch wrapper around the PHP JSON API.
+ * inphub: typed fetch wrapper around the PHP JSON API.
  *
  * Every endpoint answers with the envelope { ok: true, data } or
  * { ok: false, error }. request() unwraps it and throws on failure so callers
@@ -42,7 +42,7 @@ async function request<T = any>(
   } catch (e) {
     // Deliberate cancellations (AbortController) must stay distinguishable.
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
-    throw new ApiError('Network error — is the server running?', 0);
+    throw new ApiError('Network error. Is the server running?', 0);
   }
 
   // 401 → session expired; bounce to login.
@@ -64,13 +64,14 @@ async function request<T = any>(
   return body.data as T;
 }
 
-/** GET a read action. */
+/** GET a read action. Pass a signal to cancel a superseded request (search). */
 export function apiGet<T = any>(
   endpoint: string,
   action = 'list',
   query: Record<string, string | number | undefined> = {},
+  opts: { signal?: AbortSignal } = {},
 ): Promise<T> {
-  return request<T>(endpoint, action, { method: 'GET' }, query);
+  return request<T>(endpoint, action, { method: 'GET', signal: opts.signal }, query);
 }
 
 /** POST a mutation action with a JSON body. */

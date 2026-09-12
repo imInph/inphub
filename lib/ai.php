@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — provider-agnostic AI layer (Claude OR Ollama).
+ * inphub: provider-agnostic AI layer (Claude OR Ollama).
  *
  * One entry point, ai_generate(), that feature code calls without caring which
  * provider is configured. Everything reads the current user's settings. AI is
@@ -53,7 +53,9 @@ function ai_available(int $userId): bool
  * Generate a completion. Dispatches to the user's configured provider.
  *
  * @param array $opts  Optional: max_tokens (int), timeout (int seconds),
- *                     model (string — per-call override, does NOT touch settings).
+ *                     model (string, per-call override, does NOT touch settings),
+ *                     raw_system (bool, skip the locale preamble; for prompts
+ *                     that must come back as strict JSON).
  * @return string  The model's text reply.
  * @throws RuntimeException on any transport/API error.
  */
@@ -62,6 +64,13 @@ function ai_generate(int $userId, string $system, string $userPrompt, array $opt
     $c = ai_config($userId);
     $maxTokens = (int) ($opts['max_tokens'] ?? 1024);
     $timeout   = (int) ($opts['timeout'] ?? 60);
+
+    // Every feature funnels through here, so app-wide facts the model must not
+    // get wrong (currency, today's date) are injected once, in one place.
+    // Prompts that demand strict JSON back opt out with raw_system.
+    if (!($opts['raw_system'] ?? false)) {
+        $system = ai_locale_preamble($userId) . "\n\n" . $system;
+    }
 
     // Per-call model override (e.g. the chat's session-only selector).
     $model = isset($opts['model']) && is_string($opts['model']) ? trim($opts['model']) : '';
@@ -74,6 +83,26 @@ function ai_generate(int $userId, string $system, string $userPrompt, array $opt
         return ai_call_ollama($c, $system, $userPrompt, $maxTokens, $timeout);
     }
     return ai_call_claude($c, $system, $userPrompt, $maxTokens, $timeout);
+}
+
+/**
+ * App-wide facts prepended to every system prompt.
+ *
+ * Without this the model sees bare numbers like "2000.00" and reads them as
+ * dollars, the app stores lira by default, so a 2000 TRY week was being
+ * reported back as "$2000". Nothing else in the stack states the unit.
+ */
+function ai_locale_preamble(int $userId): string
+{
+    $currency = default_currency($userId);
+    $name     = currency_name($currency);
+
+    return "Context for this conversation:\n"
+        . '- Today is ' . date('Y-m-d') . ' (' . date('l') . ").\n"
+        . "- Every money amount in this app — and in anything you are shown below — is in "
+        . "{$currency} ({$name}). Amounts are written like \"2000.00 {$currency}\".\n"
+        . "- Never assume dollars, never convert an amount into another currency, and never "
+        . "prefix an amount with a currency symbol other than {$currency}'s.";
 }
 
 /**
@@ -231,7 +260,7 @@ function ai_test_connection(int $userId): array
 {
     $c = ai_config($userId);
     try {
-        $reply = ai_generate($userId, 'You are a connectivity test.', 'Reply with the single word: ok', ['max_tokens' => 16, 'timeout' => 30]);
+        $reply = ai_generate($userId, 'You are a connectivity test.', 'Reply with the single word: ok', ['max_tokens' => 16, 'timeout' => 30, 'raw_system' => true]);
         return ['ok' => true, 'error' => null, 'model' => $c['provider'] === 'ollama' ? $c['ollama_model'] : $c['claude_model']];
     } catch (Throwable $e) {
         return ['ok' => false, 'error' => $e->getMessage(), 'model' => null];

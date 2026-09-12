@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — common bootstrap for every /api endpoint.
+ * inphub: common bootstrap for every /api endpoint.
  *
  * Starts the session (honouring remember-me), wires the shared libs, and, for
  * everything except the auth endpoint, requires an authenticated user. Wrap the
@@ -44,7 +44,7 @@ function action(array $input): string
     return (string) input_get($input, 'action', method() === 'GET' ? 'list' : '');
 }
 
-/** Tables that fetch_owned() is allowed to read (whitelist — no interpolation risk). */
+/** Tables that fetch_owned() is allowed to read (whitelist, no interpolation risk). */
 const OWNED_TABLES = [
     'todos', 'expenses', 'expense_categories', 'repos', 'repo_suggestions',
     'habits', 'habit_logs', 'goals', 'notes', 'focus_sessions',

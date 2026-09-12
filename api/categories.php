@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — expense categories CRUD.
+ * inphub: expense categories CRUD.
  *
  *   GET  ?action=list
  *   POST ?action=create { name, color?, icon?, monthly_budget? }

@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — logout: destroy session + remember token, then back to login.
+ * inphub: logout: destroy session + remember token, then back to login.
  */
 
 declare(strict_types=1);

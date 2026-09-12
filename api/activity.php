@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — activity history (read-only feed).
+ * inphub: activity history (read-only feed).
  *
  *   GET ?action=list[&type=&actor=&limit=]
  */

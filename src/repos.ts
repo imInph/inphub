@@ -1,13 +1,15 @@
 /**
- * inphub — repositories: synced from GitHub, sorted by staleness, health badge,
+ * inphub: repositories: synced from GitHub, sorted by staleness, health badge,
  * pin, detail drawer with README + AI suggestions (suggestions surfaced in P2).
  */
 
 import { apiGet, apiPost } from './api.js';
 import {
   escapeHtml, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, confirmDialog,
+  flashFocused,
+  loadingState,
 } from './ui.js';
-import { aiAvailable } from './app.js';
+import { aiAvailable, currentParams } from './app.js';
 
 interface Repo {
   id: number; name: string; full_name: string; description: string | null;
@@ -20,17 +22,28 @@ interface Repo {
 interface Suggestion { id: number; title: string; detail: string | null; category: string; priority: string; status: string; }
 
 let staleDays = 60;
+let cache: Repo[] = [];
+/** Free-text filter over the loaded repos (name, description, language). */
+let repoFilter = '';
 
 export async function renderRepos(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="view-head">
       <h2>Repositories</h2>
       <div class="toolbar">
-        ${aiAvailable ? `<button class="btn" data-action="analyze-stale" title="Runs AI analysis on every repo untouched for ${staleDays}+ days and saves suggestions to each repo's Details.">✨ Analyze stale</button>` : ''}
-        <button class="btn btn-primary" data-action="sync">↻ Sync from GitHub</button>
+        <input type="search" data-role="search" placeholder="Filter repos…" style="width:180px">
+        ${aiAvailable ? `<button class="btn" data-action="analyze-stale" title="Runs AI analysis on every repo untouched for ${staleDays}+ days and saves suggestions to each repo's Details.">Analyze stale</button>` : ''}
+        <button class="btn btn-primary" data-action="sync">Sync from GitHub</button>
       </div>
     </div>
-    <div data-role="grid"><div class="empty">Loading…</div></div>`;
+    <div data-role="grid">${loadingState()}</div>`;
+
+  const searchEl = container.querySelector<HTMLInputElement>('[data-role="search"]')!;
+  searchEl.value = repoFilter;
+  searchEl.addEventListener('input', () => {
+    repoFilter = searchEl.value.trim();
+    render(container);
+  });
 
   onAction(container, (action, el) => {
     const id = Number(el.dataset.id);
@@ -45,15 +58,30 @@ export async function renderRepos(container: HTMLElement): Promise<void> {
 }
 
 async function load(container: HTMLElement): Promise<void> {
-  const grid = container.querySelector<HTMLElement>('[data-role="grid"]')!;
   const res = await apiGet<{ repos: Repo[]; stale_repo_days: number }>('repos', 'list');
   staleDays = res.stale_repo_days;
+  cache = res.repos;
+  render(container);
+}
 
-  if (!res.repos.length) {
-    grid.innerHTML = emptyState('⌥', 'No repos yet — add a GitHub username in Settings, then Sync.');
+/** Paint the cached repos through the text filter. */
+function render(container: HTMLElement): void {
+  const grid = container.querySelector<HTMLElement>('[data-role="grid"]');
+  if (!grid) return;
+
+  if (!cache.length) {
+    grid.innerHTML = emptyState('', 'No repos yet. Add a GitHub username in Settings, then sync.');
     return;
   }
-  grid.innerHTML = `<div class="grid grid-3">${res.repos.map(card).join('')}</div>`;
+  const q = repoFilter.toLowerCase();
+  const shown = q
+    ? cache.filter((r) => `${r.full_name} ${r.description ?? ''} ${r.language ?? ''}`.toLowerCase().includes(q))
+    : cache;
+
+  grid.innerHTML = shown.length
+    ? `<div class="grid grid-3">${shown.map(card).join('')}</div>`
+    : emptyState('', 'No repos match that filter.');
+  flashFocused(container, currentParams().get('focus'));
 }
 
 function healthClass(score: number | null): string {
@@ -68,10 +96,10 @@ function card(r: Repo): string {
   if (r.language) meta.push(escapeHtml(r.language));
   meta.push('★ ' + r.stars);
   if (r.open_issues) meta.push(r.open_issues + ' issues');
-  return `<section class="card repo-card">
+  return `<section class="card repo-card" data-row="${r.id}">
     <div class="card-head">
       <h3>${escapeHtml(r.name)} ${r.pinned ? '📌' : ''}</h3>
-      <span class="health-ring ${healthClass(r.health_score)}">${r.health_score ?? '—'}</span>
+      <span class="health-ring ${healthClass(r.health_score)}">${r.health_score ?? '-'}</span>
     </div>
     <div class="text-dim" style="min-height:2.6em">${escapeHtml(r.description ?? 'No description.')}</div>
     <div class="repo-meta">${meta.join(' · ')}</div>
@@ -102,7 +130,7 @@ async function sync(container: HTMLElement): Promise<void> {
     toast(e instanceof Error ? e.message : 'Sync failed', 'bad');
   } finally {
     btn.disabled = false;
-    btn.textContent = '↻ Sync from GitHub';
+    btn.textContent = 'Sync from GitHub';
   }
 }
 
@@ -135,7 +163,7 @@ async function openDetail(id: number): Promise<void> {
     confirmLabel: 'Close',
     bodyHtml: `
       <div class="repo-meta">
-        <span class="health-ring ${healthClass(r.health_score)}">Health ${r.health_score ?? '—'}</span>
+        <span class="health-ring ${healthClass(r.health_score)}">Health ${r.health_score ?? '-'}</span>
         ${r.language ? `<span>${escapeHtml(r.language)}</span>` : ''}
         <span>★ ${r.stars}</span><span>⑂ ${r.forks}</span>
         ${r.last_pushed_at ? `<span>pushed ${escapeHtml(fmtDate(r.last_pushed_at))}</span>` : ''}
@@ -144,41 +172,102 @@ async function openDetail(id: number): Promise<void> {
       ${r.readme_excerpt ? `<div class="md" style="max-height:36vh;overflow:auto;border-top:1px solid var(--border);padding-top:12px">${markdown(r.readme_excerpt)}</div>` : ''}
       <div class="card-head" style="margin-top:16px">
         <h3 style="margin:0">Suggestions</h3>
-        ${aiAvailable ? `<button class="btn btn-sm" data-role="analyze">✨ Analyze</button>` : ''}
+        ${aiAvailable ? `<button class="btn btn-sm" data-role="analyze">Analyze</button>
+          <button class="btn btn-sm" data-role="reanalyze" title="Ignore the cooldown">Re-analyze</button>` : ''}
       </div>
       <div data-role="suggestions">${suggestionList(res.suggestions)}</div>`,
   });
 
   const box = root.querySelector<HTMLElement>('[data-role="suggestions"]')!;
-  root.querySelector('[data-role="analyze"]')?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget as HTMLButtonElement;
+
+  const analyze = async (btn: HTMLButtonElement, force: boolean) => {
     btn.disabled = true;
+    const label = btn.textContent;
     btn.textContent = 'Analyzing…';
     try {
-      const out = await apiPost<{ suggestions: Suggestion[]; cached: boolean; analyzed_at: string }>('ai', 'analyze_repo', { repo_id: id });
+      const out = await apiPost<{ suggestions: Suggestion[]; cached: boolean; analyzed_at: string }>(
+        'ai', 'analyze_repo', force ? { repo_id: id, force: '1' } : { repo_id: id });
       box.innerHTML = suggestionList(out.suggestions);
       if (out.cached) {
-        toast(`Showing cached analysis from ${out.analyzed_at.slice(0, 16)} — analysis re-runs after the cooldown.`, '');
+        // The API has always accepted force=1; there was no way to ask for it.
+        toast(`Showing a cached analysis from ${out.analyzed_at.slice(0, 16)}. Use Re-analyze for a fresh one.`, '');
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Analysis failed', 'bad');
     } finally {
       btn.disabled = false;
-      btn.textContent = '✨ Analyze';
+      btn.textContent = label;
+    }
+  };
+
+  root.querySelector<HTMLButtonElement>('[data-role="analyze"]')
+    ?.addEventListener('click', (e) => void analyze(e.currentTarget as HTMLButtonElement, false));
+  root.querySelector<HTMLButtonElement>('[data-role="reanalyze"]')
+    ?.addEventListener('click', (e) => void analyze(e.currentTarget as HTMLButtonElement, true));
+
+  // One delegated handler on the modal body, the suggestion list is replaced
+  // in place after every analyze, so per-button listeners would be lost.
+  root.querySelector('.modal-body')!.addEventListener('click', async (e) => {
+    const el = e.target as HTMLElement;
+    const statusBtn = el.closest<HTMLElement>('[data-sug]');
+    const todoBtn = el.closest<HTMLElement>('[data-sug-todo]');
+
+    if (statusBtn) {
+      try {
+        await apiPost('repos', 'suggestion_status', {
+          id: Number(statusBtn.dataset.sug), status: statusBtn.dataset.status,
+        });
+        const fresh = await apiGet<{ suggestions: Suggestion[] }>('repos', 'detail', { id });
+        box.innerHTML = suggestionList(fresh.suggestions);
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Failed', 'bad');
+      }
+    } else if (todoBtn) {
+      const sug = Number(todoBtn.dataset.sugTodo);
+      const item = (await apiGet<{ suggestions: Suggestion[] }>('repos', 'detail', { id })).suggestions
+        .find((x) => x.id === sug);
+      if (!item) return;
+      try {
+        // Both endpoints existed; nothing ever bridged a suggestion to a task.
+        await apiPost('todos', 'create', {
+          title: item.title,
+          description: item.detail,
+          project: r.name,
+          priority: item.priority === 'high' ? 'high' : 'medium',
+        });
+        await apiPost('repos', 'suggestion_status', { id: sug, status: 'done' });
+        const fresh = await apiGet<{ suggestions: Suggestion[] }>('repos', 'detail', { id });
+        box.innerHTML = suggestionList(fresh.suggestions);
+        toast(`Added "${item.title}" to your tasks.`, 'good');
+        window.dispatchEvent(new CustomEvent('inphub:data-changed'));
+      } catch (err) {
+        toast(err instanceof Error ? err.message : 'Failed', 'bad');
+      }
     }
   });
 }
 
 function suggestionList(items: Suggestion[]): string {
   if (!items.length) {
-    return `<p class="text-dim" style="margin-top:8px">${aiAvailable ? 'No suggestions yet — click Analyze.' : 'Enable AI in Settings to get suggestions.'}</p>`;
+    return `<p class="text-dim" style="margin-top:8px">${aiAvailable ? 'No suggestions yet.' : 'Enable AI in Settings to get suggestions.'}</p>`;
   }
+  // The open→done→dismissed lifecycle existed in the schema and the API
+  // (?action=suggestion_status) with no caller at all, so a suggestion list
+  // could only ever grow and done items looked identical to open ones.
   return `<div class="list">${items.map((s) => `
-    <div class="row">
+    <div class="row" style="${s.status === 'open' ? '' : 'opacity:.55'}">
       <span class="grow"><strong>${escapeHtml(s.title)}</strong>
         ${s.detail ? `<div class="muted">${escapeHtml(s.detail)}</div>` : ''}</span>
       <span class="chip">${escapeHtml(s.category)}</span>
       <span class="chip pri-${escapeHtml(s.priority)}">${escapeHtml(s.priority)}</span>
+      ${s.status === 'open' ? `
+        <span class="row-actions" style="opacity:1">
+          <button class="btn btn-ghost btn-sm" data-sug-todo="${s.id}" title="Add as a task">＋ task</button>
+          <button class="btn btn-ghost btn-sm" data-sug="${s.id}" data-status="done" title="Mark done">✓</button>
+          <button class="btn btn-ghost btn-sm" data-sug="${s.id}" data-status="dismissed" title="Dismiss">✕</button>
+        </span>`
+      : `<span class="badge ${s.status === 'done' ? 'badge-good' : 'badge-warn'}">${escapeHtml(s.status)}</span>
+         <button class="btn btn-ghost btn-sm" data-sug="${s.id}" data-status="open" title="Reopen">↺</button>`}
     </div>`).join('')}</div>`;
 }
 
@@ -194,7 +283,7 @@ async function analyzeStale(container: HTMLElement): Promise<void> {
     if (res.skipped) parts.push(`${res.skipped} recently analyzed (skipped)`);
     if (res.failed) parts.push(`${res.failed} failed`);
     toast(parts.join(' · ') + '.', res.failed ? 'bad' : 'good');
-    // Results live in each repo's Details drawer — reload so the grid reflects them.
+    // Results live in each repo's Details drawer, reload so the grid reflects them.
     await load(container);
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Failed', 'bad');
@@ -202,7 +291,7 @@ async function analyzeStale(container: HTMLElement): Promise<void> {
     const b = container.querySelector<HTMLButtonElement>('[data-action="analyze-stale"]');
     if (b) {
       b.disabled = false;
-      b.textContent = '✨ Analyze stale';
+      b.textContent = 'Analyze stale';
     }
   }
 }

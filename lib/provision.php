@@ -1,10 +1,10 @@
 <?php
 /**
- * inphub — first-login provisioning.
+ * inphub: first-login provisioning.
  *
  * Manually-added users only need one INSERT into `users`. On their first
  * login we seed the same sensible defaults that inphub.sql gives user 1:
- * settings, expense categories, and starter habits. Idempotent — each block
+ * settings, expense categories, and starter habits. Idempotent, each block
  * only seeds when that table is empty for the user.
  */
 
@@ -18,6 +18,7 @@ function default_settings(): array
     return [
         'theme'            => 'dark',
         'base_currency'    => 'TRY',
+        'starting_balance' => '0',
         'owner_name'       => '',
         'github_username'  => '',
         'github_token'     => '',

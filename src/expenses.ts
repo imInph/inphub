@@ -1,13 +1,19 @@
 /**
- * inphub — money: ledger with filters, category manager, Chart.js donut + line,
- * budget bars. Chart.js is a global loaded from CDN (charts only).
+ * inphub: money: period-scoped totals, ledger with filters, category manager,
+ * Chart.js donut + line, budget bars. Chart.js is a global loaded from CDN.
+ *
+ * One period selector scopes the totals, both charts and the ledger. Two things
+ * deliberately ignore it: "Current net" is always all-time (money in your wallet
+ * does not reset on the 1st) and Budgets are always the current calendar month
+ * (a monthly_budget only means anything against a month).
  */
 
 import { apiGet, apiPost } from './api.js';
 import {
-  escapeHtml, money, fmtDate, monthStr, todayStr, emptyState, toast, onAction,
-  openModal, formValues, confirmDialog,
+  escapeHtml, money, fmtDate, fmtMonth, todayStr, emptyState, toast, onAction,
+  openModal, formValues, confirmDialog, flashFocused,
 } from './ui.js';
+import { currentParams } from './app.js';
 import { opts } from './todos.js';
 
 declare const Chart: any;
@@ -18,15 +24,53 @@ interface Expense {
   category_name: string | null; category_color: string | null; description: string | null;
   payment_method: string | null; spent_at: string; is_recurring: number; recurring_interval: string | null;
 }
-interface Charts {
-  month: string;
+interface MoneyStats {
+  period: string; label: string; from: string | null; to: string | null;
+  currency: string; granularity: 'day' | 'month'; budget_month: string;
+  totals: { expense: number; income: number; net: number };
+  all_time: { expense: number; income: number; starting_balance: number; current_net: number };
   by_category: { name: string; color: string | null; total: string }[];
-  over_time: { d: string; total: string }[];
+  over_time: { d: string; total: string | number }[];
   budgets: { name: string; color: string | null; monthly_budget: string; spent: string }[];
 }
 
-let month = monthStr();
+/** Selectable windows, server-side keys in lib/helpers.php MONEY_PERIODS. */
+const PERIODS: ReadonlyArray<readonly [string, string]> = [
+  ['month', 'This month'],
+  ['last_month', 'Last month'],
+  ['3m', 'Last 3 months'],
+  ['6m', 'Last 6 months'],
+  ['year', 'This year'],
+  ['all', 'All time'],
+];
+const PERIOD_KEY = 'inphub.money.period';
+
+/** Last choice wins across reloads; an unknown stored value falls back. */
+function storedPeriod(): string {
+  try {
+    const v = localStorage.getItem(PERIOD_KEY);
+    if (v && PERIODS.some(([k]) => k === v)) return v;
+  } catch {
+    /* storage unavailable */
+  }
+  return 'month';
+}
+
+function rememberPeriod(value: string): void {
+  try {
+    localStorage.setItem(PERIOD_KEY, value);
+  } catch {
+    /* storage unavailable, the choice still holds for this page session */
+  }
+}
+
+function periodLabel(key: string): string {
+  return PERIODS.find(([k]) => k === key)?.[1] ?? 'This month';
+}
+
+let period = storedPeriod();
 let categories: Category[] = [];
+/** Display currency, authoritative once the first stats payload lands. */
 let currency = 'TRY';
 let donutChart: any = null;
 let lineChart: any = null;
@@ -36,11 +80,15 @@ export async function renderExpenses(container: HTMLElement): Promise<void> {
     <div class="view-head">
       <h2>Money</h2>
       <div class="toolbar">
-        <input type="month" data-role="month" value="${escapeHtml(month)}" style="width:auto">
+        <select data-role="period" style="width:auto">
+          ${PERIODS.map(([k, label]) =>
+            `<option value="${k}"${k === period ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+        </select>
         <button class="btn" data-action="categories">Categories</button>
         <button class="btn btn-primary" data-action="new">+ Entry</button>
       </div>
     </div>
+    <div class="grid grid-3 stat-strip" data-role="stats"></div>
     <div class="grid grid-2" data-role="charts"></div>
     <div class="card" style="margin-top:16px">
       <div class="card-head"><h3>Ledger</h3>
@@ -53,9 +101,13 @@ export async function renderExpenses(container: HTMLElement): Promise<void> {
       <div data-role="ledger"></div>
     </div>`;
 
-  const monthEl = container.querySelector<HTMLInputElement>('[data-role="month"]')!;
-  monthEl.addEventListener('change', () => {
-    month = monthEl.value || monthStr();
+  // Bound once. Safe because nothing ever re-renders .view-head, the loaders
+  // swap only their own [data-role] nodes. Re-rendering the head here would
+  // destroy this <select> and the dropdown would work exactly once.
+  const periodEl = container.querySelector<HTMLSelectElement>('[data-role="period"]')!;
+  periodEl.addEventListener('change', () => {
+    period = periodEl.value || 'month';
+    rememberPeriod(period);
     reload(container);
   });
   container.querySelector<HTMLSelectElement>('[data-role="type"]')!.addEventListener('change', () => loadLedger(container));
@@ -82,23 +134,39 @@ async function reload(container: HTMLElement): Promise<void> {
 async function loadLedger(container: HTMLElement): Promise<void> {
   const typeEl = container.querySelector<HTMLSelectElement>('[data-role="type"]')!;
   const ledger = container.querySelector<HTMLElement>('[data-role="ledger"]')!;
-  const query: Record<string, string> = { month };
+  const query: Record<string, string> = { period };
   if (typeEl.value) query.type = typeEl.value;
   const items = await apiGet<Expense[]>('expenses', 'list', query);
   ledgerCache = items;
-  if (items.length) currency = items[0].currency || currency;
 
-  if (!items.length) {
-    ledger.innerHTML = emptyState('₺', 'No entries this month.');
-    return;
+  if (items.length) {
+    renderLedgerTable(ledger, items);
+  } else {
+    ledger.innerHTML = emptyState('', `No entries for ${periodLabel(period).toLowerCase()}.`);
   }
+
+  // Arrived from search or history. Runs for the empty case too, returning
+  // early there would refuse to widen exactly when widening matters most. An older entry falls outside the selected
+  // period, so widen to All time rather than appearing to do nothing.
+  const focus = currentParams().get('focus');
+  if (focus !== null && !flashFocused(container, focus) && (period !== 'all' || typeEl.value !== '')) {
+    period = 'all';
+    rememberPeriod(period);
+    const periodEl = container.querySelector<HTMLSelectElement>('[data-role="period"]');
+    if (periodEl) periodEl.value = 'all';
+    typeEl.value = '';
+    await reload(container);
+  }
+}
+
+function renderLedgerTable(ledger: HTMLElement, items: Expense[]): void {
   ledger.innerHTML = `
     <table class="data">
       <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead>
       <tbody>${items.map((e) => `
-        <tr>
+        <tr data-row="${e.id}">
           <td>${escapeHtml(fmtDate(e.spent_at))}</td>
-          <td>${e.category_name ? `${dot(e.category_color)} ${escapeHtml(e.category_name)}` : '<span class="muted">—</span>'}</td>
+          <td>${e.category_name ? `${dot(e.category_color)} ${escapeHtml(e.category_name)}` : '<span class="muted">-</span>'}</td>
           <td>${escapeHtml(e.description ?? '')}${e.is_recurring ? ' <span class="chip">↻</span>' : ''}</td>
           <td class="num ${e.type === 'income' ? 'text-good' : ''}">${e.type === 'income' ? '+' : ''}${escapeHtml(money(e.amount, e.currency))}</td>
           <td class="num">
@@ -110,15 +178,29 @@ async function loadLedger(container: HTMLElement): Promise<void> {
 }
 
 async function loadCharts(container: HTMLElement): Promise<void> {
+  const statsHost = container.querySelector<HTMLElement>('[data-role="stats"]')!;
   const host = container.querySelector<HTMLElement>('[data-role="charts"]')!;
-  const c = await apiGet<Charts>('stats', 'expenses', { month });
+  const c = await apiGet<MoneyStats>('stats', 'expenses', { period });
+  currency = c.currency || currency;
+
+  // Spent/Income follow the selector; Current net never does, and says so.
+  statsHost.innerHTML = `
+    ${statCard('Spent', c.label, money(c.totals.expense, currency), c.totals.expense > 0 ? 'text-bad' : '')}
+    ${statCard('Income', c.label, money(c.totals.income, currency), c.totals.income > 0 ? 'text-good' : '')}
+    ${statCard('Current net', 'all time', money(c.all_time.current_net, currency),
+      c.all_time.current_net < 0 ? 'text-bad' : 'text-good')}`;
+
+  // The series is zero-filled, so "has rows" no longer means "has spending".
+  const hasSpend = c.over_time.some((x) => Number(x.total) > 0);
 
   host.innerHTML = `
     <div class="card"><div class="card-head"><h3>By category</h3></div>
-      ${c.by_category.length ? '<canvas data-role="donut" height="220"></canvas>' : emptyState('◔', 'No spending yet.')}</div>
-    <div class="card"><div class="card-head"><h3>Over the month</h3></div>
-      ${c.over_time.length ? '<canvas data-role="line" height="220"></canvas>' : emptyState('📈', 'No spending yet.')}</div>
-    ${c.budgets.length ? `<div class="card" style="grid-column:1/-1"><div class="card-head"><h3>Budgets</h3></div>
+      ${c.by_category.length ? '<canvas data-role="donut" height="220"></canvas>' : emptyState('', 'No spending in this period.')}</div>
+    <div class="card"><div class="card-head"><h3>Over time</h3>
+      <span class="chip">${escapeHtml(c.granularity === 'month' ? 'monthly' : 'daily')}</span></div>
+      ${hasSpend ? '<canvas data-role="line" height="220"></canvas>' : emptyState('', 'No spending in this period.')}</div>
+    ${c.budgets.length ? `<div class="card" style="grid-column:1/-1"><div class="card-head"><h3>Budgets</h3>
+      <span class="chip">${escapeHtml(fmtMonth(c.budget_month))}</span></div>
       <div class="list">${c.budgets.map((b) => {
         const spent = parseFloat(b.spent);
         const budget = parseFloat(b.monthly_budget);
@@ -154,8 +236,8 @@ async function loadCharts(container: HTMLElement): Promise<void> {
     lineChart = new Chart(line, {
       type: 'line',
       data: {
-        labels: c.over_time.map((x) => fmtDate(x.d)),
-        datasets: [{ data: c.over_time.map((x) => parseFloat(x.total)), borderColor: '#4f8cff', backgroundColor: 'rgba(79,140,255,.15)', fill: true, tension: 0.25 }],
+        labels: c.over_time.map((x) => (c.granularity === 'month' ? fmtMonth(x.d) : fmtDate(x.d))),
+        datasets: [{ data: c.over_time.map((x) => Number(x.total) || 0), borderColor: '#4f8cff', backgroundColor: 'rgba(79,140,255,.15)', fill: true, tension: 0.25 }],
       },
       options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
     });
@@ -163,17 +245,36 @@ async function loadCharts(container: HTMLElement): Promise<void> {
 }
 
 async function remove(container: HTMLElement, id: number): Promise<void> {
+  const e = findExpense(id);
   if (!(await confirmDialog('Delete this entry?'))) return;
   try {
     await apiPost('expenses', 'delete', { id });
     reload(container);
-  } catch (e) {
-    toast(e instanceof Error ? e.message : 'Failed', 'bad');
+    if (e) {
+      toast(`Deleted ${money(e.amount, e.currency)}`, '', {
+        label: 'Undo',
+        run: async () => {
+          try {
+            await apiPost('expenses', 'create', {
+              type: e.type, amount: e.amount, currency: e.currency, category_id: e.category_id,
+              description: e.description, payment_method: e.payment_method, spent_at: e.spent_at,
+              is_recurring: e.is_recurring, recurring_interval: e.recurring_interval,
+            });
+            await reload(container);
+            toast('Restored as a new entry.', 'good');
+          } catch (err) {
+            toast(err instanceof Error ? err.message : 'Could not restore', 'bad');
+          }
+        },
+      });
+    }
+  } catch (err) {
+    toast(err instanceof Error ? err.message : 'Failed', 'bad');
   }
 }
 
 function openEditor(container: HTMLElement, exp: Expense | null): void {
-  const catOpts = ['<option value="">— none —</option>']
+  const catOpts = ['<option value="">none</option>']
     .concat(categories.map((c) => `<option value="${c.id}" ${exp?.category_id === c.id ? 'selected' : ''}>${escapeHtml(c.name)}</option>`))
     .join('');
   openModal({
@@ -299,6 +400,24 @@ function editCategory(cat: Category, refresh: () => Promise<void>): void {
       }
     },
   });
+}
+
+/** One figure in the summary strip above the charts. */
+function statCard(title: string, sub: string, value: string, tone: string): string {
+  return `<div class="card stat">
+    <div class="stat-label">${escapeHtml(title)} <span class="text-dim">· ${escapeHtml(sub)}</span></div>
+    <div class="stat-value mono tabular ${tone}">${escapeHtml(value)}</div>
+  </div>`;
+}
+
+/** The configured currency's symbol ("₺"), falling back to the raw code. */
+function currencySymbol(code: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: code, maximumFractionDigits: 0 })
+      .formatToParts(0).find((part) => part.type === 'currency')?.value ?? code;
+  } catch {
+    return code;
+  }
 }
 
 function dot(color: string | null): string {

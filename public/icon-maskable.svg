@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" fill="#0b0d12"/>
+  <text x="256" y="312" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+        font-size="150" font-weight="700" text-anchor="middle">
+    <tspan fill="#4f8cff">in</tspan><tspan fill="#e6e9ef">ph</tspan>
+  </text>
+</svg>

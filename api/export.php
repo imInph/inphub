@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — data export (browser-navigated download, not JSON-enveloped).
+ * inphub: data export (browser-navigated download, not JSON-enveloped).
  *
  *   GET ?action=json          everything the user owns, as one JSON file
  *   GET ?action=expenses_csv  the expenses ledger as CSV
@@ -112,7 +112,7 @@ $tables = [
 ];
 $data = ['inphub_version' => INPHUB_VERSION, 'exported_at' => date('c'), 'user_id' => $uid];
 foreach ($tables as $table) {
-    // $table comes only from the whitelist above — never from user input.
+    // $table comes only from the whitelist above, never from user input.
     $stmt = db()->prepare("SELECT * FROM `$table` WHERE user_id = ?");
     $stmt->execute([$uid]);
     $data[$table] = $stmt->fetchAll();

@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — thin GitHub REST wrapper (server-side cURL).
+ * inphub: thin GitHub REST wrapper (server-side cURL).
  *
  * Used by api/sync_repos.php to pull the user's repositories and README/license
  * metadata. The token (optional) comes from the user's settings and, when set,

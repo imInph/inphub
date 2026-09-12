@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — app shell.
+ * inphub: app shell.
  *
  * Guards the session, injects a small bootstrap payload (user + theme), and
  * renders the persistent nav plus one empty <section> per view. The compiled
@@ -34,6 +34,7 @@ $nav = [
     ['goals',     'Goals',     'g'],
     ['notes',     'Notes',     'n'],
     ['focus',     'Focus',     'f'],
+    ['insights',  'Insights',  'i'],
     ['activity',  'History',   'a'],
     ['settings',  'Settings',  's'],
 ];
@@ -44,15 +45,50 @@ $nav = [
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>inphub</title>
+    <meta name="description" content="Personal life dashboard: money, tasks, habits, goals, notes, focus.">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="<?= $theme === 'light' ? '#f4f6fa' : '#0b0d12' ?>">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="inphub">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="manifest" href="manifest.json">
     <?php
         // Cache-bust CSS/JS by file mtime so a copied-in update is never served
         // stale from the browser cache.
+        //
+        // $jsVer is the NEWEST mtime across every module, not just app.js:
+        // app.js statically imports its 14 siblings by bare relative path, so
+        // those URLs carry no version of their own. Versioning only the entry
+        // point let the browser pair a fresh app.js with a cached ui.js, and a
+        // missing export is an ES-module *link* error, which stops app.js from
+        // executing at all. The whole app dies silently. Keep this as a max().
+        // $jsVer MUST equal the id tools/stamp-modules.mjs baked into the
+        // import specifiers. A mismatch makes app.js?v=X and ./app.js?v=Y two
+        // distinct modules, so app.js evaluates twice and the second copy runs
+        // init() against a half-initialised command-palette module.
         $cssVer = @filemtime(__DIR__ . '/assets/css/app.css') ?: time();
-        $jsVer  = @filemtime(__DIR__ . '/assets/js/app.js') ?: time();
+        $jsVer  = trim((string) @file_get_contents(__DIR__ . '/assets/js/build-id.txt'));
+        if ($jsVer === '') {
+            // No stamp file (someone ran tsc without the build script), fall
+            // back to the newest module mtime, which is still better than
+            // versioning app.js alone.
+            $mtime = 0;
+            foreach (glob(__DIR__ . '/assets/js/*.js') ?: [] as $mod) {
+                $mtime = max($mtime, (int) @filemtime($mod));
+            }
+            $jsVer = (string) ($mtime ?: time());
+        }
     ?>
     <link rel="stylesheet" href="assets/css/app.css?v=<?= $cssVer ?>">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+    <?php
+        // Chart.js is vendored so the charts do not depend on a CDN. It lives
+        // outside assets/js/ because that whole directory is gitignored as
+        // compiled output, and this file has to ship with the repo.
+        $chartSrc = 'assets/vendor/chart-4.4.1.min.js';
+        $chartVer = @filemtime(__DIR__ . '/' . $chartSrc) ?: $jsVer;
+    ?>
+    <script src="<?= $chartSrc ?>?v=<?= htmlspecialchars((string) $chartVer, ENT_QUOTES) ?>" defer></script>
     <script>window.INPHUB = <?= json_encode($boot, JSON_UNESCAPED_UNICODE) ?>;</script>
     <script>
         // Apply the locally-cached theme before first paint so a stale server
@@ -79,8 +115,9 @@ $nav = [
                 <?php endforeach; ?>
             </nav>
             <div class="sidebar-foot">
-                <button class="btn btn-ghost" id="btn-chat" hidden>💬 Chat</button>
-                <button class="btn btn-ghost" id="btn-palette" title="Ctrl/Cmd+K">⌘K</button>
+                <button class="btn btn-ghost" id="btn-chat" hidden>Chat</button>
+                <button class="btn btn-ghost" id="btn-palette" title="Press K (or Ctrl/Cmd+K)"
+                        onclick="window.inphubPalette&&window.inphubPalette()">Search</button>
                 <a class="btn btn-ghost" href="logout.php">Log out</a>
             </div>
         </aside>
@@ -108,7 +145,7 @@ $nav = [
         </main>
     </div>
 
-    <!-- Slide-out chat panel (populated in Phase 2 by chat.ts) -->
+    <!-- Slide-out chat panel (populated by chat.ts) -->
     <div id="chat-panel" class="chat-panel" hidden></div>
 
     <!-- Command palette -->
@@ -117,6 +154,20 @@ $nav = [
     <!-- Toast host -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
 
-    <script type="module" src="assets/js/app.js?v=<?= $jsVer ?>"></script>
+    <!-- A module link error (usually a half-cached bundle) otherwise fails in
+         total silence: no view renders and no shortcut works. Say so out loud. -->
+    <script>
+        window.addEventListener('error', function (e) {
+            if (e && e.message && /module|import|export/i.test(e.message) && !window.__inphubLoaded) {
+                var b = document.createElement('div');
+                b.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:999;padding:12px 16px;'
+                    + 'background:#ef4444;color:#fff;font:14px system-ui;text-align:center';
+                b.textContent = 'inphub could not load its scripts. Hard-reload the page '
+                    + '(Cmd/Ctrl+Shift+R) to clear a stale cached module.';
+                document.body.appendChild(b);
+            }
+        });
+    </script>
+    <script type="module" src="assets/js/app.js?v=<?= htmlspecialchars($jsVer, ENT_QUOTES) ?>"></script>
 </body>
 </html>

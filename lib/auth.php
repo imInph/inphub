@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — authentication: sessions, login/logout, remember-me, guards.
+ * inphub: authentication: sessions, login/logout, remember-me, guards.
  *
  * There is no registration. Accounts are inserted by hand (see tools/hashpw.php
  * and the template in inphub.sql). On first login a user is auto-provisioned
@@ -151,6 +151,56 @@ function attempt_remember_login(): void
     $_SESSION['role']    = $row['role'];
 
     issue_remember_token((int) $row['user_id']);
+}
+
+/**
+ * Change the signed-in user's password.
+ *
+ * The app had no way to do this at all, accounts are inserted by hand and
+ * README tells you to change the publicly documented default immediately.
+ * Every *other* remember-me token is invalidated, so a device that kept you
+ * signed in cannot keep the old credential alive; the current one is rotated.
+ *
+ * @return array{ok:bool, error:?string}
+ */
+function change_password(int $userId, string $current, string $next): array
+{
+    if ($userId <= 0) {
+        return ['ok' => false, 'error' => 'Not signed in.'];
+    }
+    if (mb_strlen($next) < 8) {
+        return ['ok' => false, 'error' => 'New password must be at least 8 characters.'];
+    }
+
+    $stmt = db()->prepare('SELECT password_hash FROM users WHERE id = ? LIMIT 1');
+    $stmt->execute([$userId]);
+    $hash = $stmt->fetchColumn();
+    if ($hash === false || !password_verify($current, (string) $hash)) {
+        return ['ok' => false, 'error' => 'Current password is incorrect.'];
+    }
+    if (password_verify($next, (string) $hash)) {
+        return ['ok' => false, 'error' => 'That is already your password.'];
+    }
+
+    $upd = db()->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+    $upd->execute([password_hash($next, PASSWORD_DEFAULT), $userId]);
+
+    // Drop every remembered device, then re-issue for this one if it had one.
+    $hadCookie = ($_COOKIE[REMEMBER_COOKIE] ?? '') !== '';
+    $wipe = db()->prepare('DELETE FROM remember_tokens WHERE user_id = ?');
+    $wipe->execute([$userId]);
+    clear_remember_cookie();
+    if ($hadCookie) {
+        issue_remember_token($userId);
+    }
+
+    // Keep the session valid but give it a new id.
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+
+    log_activity($userId, 'auth.password_changed', 'user', $userId, 'Changed account password');
+    return ['ok' => true, 'error' => null];
 }
 
 /** Destroy the session and delete the matching remember token + cookie. */

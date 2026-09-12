@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — admin-only account management.
+ * inphub: admin-only account management.
  *
  *   GET  ?action=list                       list all accounts
  *   POST ?action=set_active { id, active }  activate / deactivate an account

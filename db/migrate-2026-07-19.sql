@@ -1,4 +1,4 @@
--- inphub migration — 2026-07-19
+-- inphub migration, 2026-07-19
 -- Run once against an EXISTING database (phpMyAdmin or:
 --   mysql -u root inphub < db/migrate-2026-07-19.sql
 -- ). Fresh installs get this from inphub.sql and must NOT run it.

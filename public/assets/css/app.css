@@ -11,7 +11,26 @@
 
     --radius: 12px;
     --radius-sm: 8px;
+    --radius-lg: 18px;
+    --radius-pill: 999px;
     --gap: 16px;
+
+    /* Spacing scale — paddings were ad-hoc pixel values throughout. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    /* Type scale — the app used 19 different ad-hoc rem sizes. */
+    --text-xs: .72rem;
+    --text-sm: .82rem;
+    --text-base: .92rem;
+    --text-md: 1rem;
+    --text-lg: 1.1rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.8rem;
 
     /* Dark palette (default) */
     --bg: #0b0d12;
@@ -28,7 +47,19 @@
     --good: #22c55e;
     --warn: #eab308;
     --bad: #ef4444;
+    /* Elevation ladder — one --shadow used to serve a card, a toast and a
+       full-height panel alike. */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.50);
+
+    /* Foreground for accent fills; #fff was hardcoded in four places. */
+    --accent-fg: #ffffff;
+    /* Pressed/hover accent. Kept separate from --accent-soft below: one token
+       doing both jobs is what made light-mode hover unreadable. */
+    --accent-strong: #2b5bbd;
+    --accent-soft: rgba(79, 140, 255, 0.18);
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 }
 
 [data-theme="light"] {
@@ -43,10 +74,16 @@
     --text-faint: #97a0b0;
     --accent: #2f6fe4;
     --accent-dim: #b9d0ff;
+    /* Hover must get DARKER, not paler: white on #b9d0ff measured 1.55:1.
+       #1f56bd keeps white text at ~6.4:1. */
+    --accent-strong: #1f56bd;
+    --accent-soft: rgba(47, 111, 228, 0.14);
     --good: #16a34a;
     --warn: #b45309;
     --bad: #dc2626;
+    --shadow-sm: 0 1px 3px rgba(20, 30, 60, 0.08);
     --shadow: 0 4px 18px rgba(20, 30, 60, 0.10);
+    --shadow-lg: 0 18px 50px rgba(20, 30, 60, 0.18);
 }
 
 * { box-sizing: border-box; }
@@ -82,24 +119,40 @@ small { color: var(--text-dim); }
 }
 .btn:hover { border-color: var(--accent); }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-dim); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn-ghost:hover { color: var(--text); background: var(--bg-elev-2); }
 .btn-danger { border-color: var(--bad); color: var(--bad); }
-.btn-danger:hover { background: var(--bad); color: #fff; }
+.btn-danger:hover { background: var(--bad); color: var(--accent-fg); }
 .btn-block { width: 100%; justify-content: center; }
 .btn-sm { padding: 4px 8px; font-size: .8rem; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 /* --- Forms --- */
+/* 16px minimum: iOS Safari auto-zooms the viewport on focus for anything
+   smaller, which it was doing on every single field in the app. */
 input, select, textarea {
-    width: 100%; padding: 8px 10px;
+    width: 100%; padding: var(--space-2) 10px;
     background: var(--bg); color: var(--text);
     border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-    font: inherit; font-size: .92rem;
+    font: inherit;
+    /* 16px floor, last in the block so nothing above overrides it: iOS Safari
+       auto-zooms the viewport when a focused field is smaller, which it was
+       doing on every field in the app (.92rem of 15px ≈ 13.8px). */
+    font-size: max(16px, var(--text-base));
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+/* There was no :focus-visible anywhere, and the rule above removed the only
+   ring a keyboard user had. Buttons, links and chips had nothing at all. */
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+    border-color: var(--accent); box-shadow: var(--focus-ring);
+}
+.nav-item:focus-visible, .btn:focus-visible, .habit-chip:focus-visible,
+.shortcut:focus-visible, .palette-item:focus-visible, .note-title:focus-visible,
+.check:focus-visible, a:focus-visible { box-shadow: var(--focus-ring); }
 textarea { resize: vertical; min-height: 72px; }
 label { display: block; }
 label > span { display: block; margin-bottom: 4px; font-size: .82rem; color: var(--text-dim); }
@@ -111,7 +164,7 @@ label.checkbox input { width: auto; }
 /* ==========================================================================
    Login
    ========================================================================== */
-.login-body { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
+.login-body { display: grid; place-items: center; min-height: 100dvh; padding: 20px; }
 .login-card {
     width: 100%; max-width: 360px; background: var(--card);
     border: 1px solid var(--border); border-radius: var(--radius);
@@ -148,7 +201,7 @@ label.checkbox input { width: auto; }
     border-radius: var(--radius-sm); color: var(--text-dim); font-size: .92rem;
 }
 .nav-item:hover { background: var(--bg-elev-2); color: var(--text); }
-.nav-item.active { background: var(--accent); color: #fff; }
+.nav-item.active { background: var(--accent); color: var(--accent-fg); }
 .sidebar-foot { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border); padding-top: 10px; }
 
 .main { display: flex; flex-direction: column; min-width: 0; }
@@ -165,7 +218,7 @@ label.checkbox input { width: auto; }
 .topbar-right { display: flex; align-items: center; gap: 14px; }
 .clock { font-family: var(--font-mono); color: var(--text-dim); font-size: .95rem; }
 
-.view { padding: 24px; animation: fade .18s ease; }
+.view { padding: var(--space-5); }
 .view[hidden] { display: none; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
@@ -195,6 +248,12 @@ label.checkbox input { width: auto; }
 .grid-dash { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 .grid-2 { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
 .grid-3 { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+
+/* --- Money summary strip (spent / income / all-time net) --- */
+.stat-strip { margin-bottom: var(--gap); }
+.stat { display: flex; flex-direction: column; gap: 6px; }
+.stat-label { font-size: .82rem; color: var(--text-dim); }
+.stat-value { font-size: 1.5rem; font-weight: 600; line-height: 1.2; }
 
 /* --- Dashboard: Google search + site shortcuts --- */
 .dash-search { position: relative; margin: 6px 0 26px; }
@@ -251,7 +310,85 @@ label.checkbox input { width: auto; }
 .pri-high { color: var(--warn); }
 .text-good { color: var(--good); }
 .text-bad { color: var(--bad); }
+.text-warn { color: var(--warn); }
 .text-dim { color: var(--text-dim); }
+
+/* --- Palette sections + two-line rows (global search) --- */
+.palette-section {
+    padding: 10px 14px 4px; font-size: .7rem; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text-faint);
+}
+.palette-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.palette-label small { color: var(--text-dim); font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item .hint { flex: none; }
+
+/* Defined outside the breakpoint: it was only styled inside the mobile media
+   query, so opening the drawer at desktop width rendered a bare visible div. */
+.nav-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 65;
+    cursor: pointer;   /* iOS Safari needs this to deliver taps on a plain div */
+    display: none;
+}
+
+/* --- Safe areas (notch / home indicator) --- */
+.topbar { padding-top: max(var(--space-3), env(safe-area-inset-top)); }
+.toasts { padding-bottom: env(safe-area-inset-bottom); }
+.modal-actions { padding-bottom: env(safe-area-inset-bottom); }
+.chat-input { padding-bottom: max(var(--space-2), env(safe-area-inset-bottom)); }
+.sidebar { padding-bottom: max(var(--space-3), env(safe-area-inset-bottom)); }
+
+/* --- Toast with an action (undo) --- */
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-text { flex: 1; min-width: 0; }
+.toast-action {
+    flex: none; background: transparent; border: 1px solid var(--border-strong);
+    color: var(--text); border-radius: var(--radius-sm); padding: 3px 10px;
+    font: inherit; font-size: .82rem; font-weight: 600; cursor: pointer;
+}
+.toast-action:hover { border-color: var(--accent); color: var(--accent); }
+
+/* --- Loading skeletons (replaces the "Loading…" empty state) --- */
+.skeleton-wrap { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.skeleton {
+    height: 44px; border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--bg-elev) 25%, var(--bg-elev-2) 37%, var(--bg-elev) 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+
+/* --- Note card title as a control (opens the reader) --- */
+.note-title {
+    background: none; border: none; padding: 0; margin: 0; font: inherit; color: inherit;
+    cursor: pointer; text-align: left;
+}
+.note-title:hover { color: var(--accent); }
+
+/* --- History rows that link through to their entity --- */
+.act-link { color: var(--text); text-decoration: none; border-bottom: 1px solid transparent; }
+.act-link:hover { color: var(--accent); border-bottom-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+/* Respect a reduced-motion preference: three keyframes, the drawer transform
+   and a 150-particle confetti burst otherwise all run unconditionally. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* --- j/k row cursor --- */
+.row-cursor { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* --- Focused row (arrived from search or history) --- */
+.flash { animation: flash 1.6s ease-out; border-radius: var(--radius-sm); }
+@keyframes flash {
+    0%   { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); }
+    70%  { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent); }
+    100% { box-shadow: 0 0 0 2px transparent, 0 0 0 6px transparent; }
+}
 
 /* --- Lists --- */
 .list { display: flex; flex-direction: column; gap: 8px; }
@@ -265,7 +402,7 @@ label.checkbox input { width: auto; }
 .row:hover .row-actions { opacity: 1; }
 
 .check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border-strong); cursor: pointer; flex: none; display: grid; place-items: center; }
-.check.done { background: var(--good); border-color: var(--good); color: #fff; }
+.check.done { background: var(--good); border-color: var(--good); color: var(--accent-fg); }
 
 /* --- Tables (ledger) --- */
 table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }
@@ -313,7 +450,9 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
    ========================================================================== */
 .modal-backdrop {
     position: fixed; inset: 0; background: rgba(0,0,0,.5);
-    display: grid; place-items: center; z-index: 50; padding: 20px;
+    /* Above the chat panel (60) and the mobile drawer (70): a modal opened
+       from either used to render behind it and be unreachable. */
+    display: grid; place-items: center; z-index: 90; padding: 20px;
 }
 .modal {
     width: 100%; max-width: 460px; background: var(--card);
@@ -339,12 +478,12 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 /* ==========================================================================
    Command palette
    ========================================================================== */
-.palette { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 80; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.palette { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 95; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
 .palette[hidden] { display: none; }
 .palette-box { width: 100%; max-width: 520px; background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
 .palette-box input { border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 14px 16px; font-size: 1rem; }
 .palette-list { max-height: 320px; overflow: auto; }
-.palette-item { padding: 10px 16px; cursor: pointer; display: flex; justify-content: space-between; }
+.palette-item { padding: 10px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .palette-item.active, .palette-item:hover { background: var(--bg-elev-2); }
 .palette-item .hint { color: var(--text-faint); font-size: .78rem; font-family: var(--font-mono); }
 
@@ -373,7 +512,7 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 .chat-actions-note.warn { color: var(--warn); }
 .chat-log { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .chat-msg { padding: 10px 12px; border-radius: var(--radius-sm); max-width: 90%; font-size: .9rem; }
-.chat-msg.user { align-self: flex-end; background: var(--accent); color: #fff; }
+.chat-msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); }
 .chat-msg.assistant { align-self: flex-start; background: var(--bg-elev-2); border: 1px solid var(--border); }
 .chat-actions-note { font-size: .76rem; color: var(--good); margin-top: 6px; }
 .chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); }
@@ -413,7 +552,7 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
        document-level delegated click handler (it ignores non-interactive
        elements otherwise) — without it, tapping the backdrop wouldn't close
        the drawer on iPhones. */
-    .nav-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 65; cursor: pointer; }
+    .nav-backdrop { display: block; }
     .nav-backdrop[hidden] { display: none; }
 
     .topbar { padding: 10px 14px; }
@@ -427,6 +566,17 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 
     /* Touch targets ≥44px; hover-revealed actions become always visible. */
     .btn, .nav-item, select, input:not([type="color"]), .habit-chip { min-height: 44px; }
+    /* .check is the most-tapped control in the app and was 16px under the
+       minimum; .shortcut-del was a 20px destructive button forced visible
+       right on top of a tile you are trying to open. */
+    .check { width: 44px; height: 44px; }
+    .shortcut-del { width: 32px; height: 32px; font-size: 1rem; opacity: 0; }
+    .shortcut:active .shortcut-del, .shortcut:focus-within .shortcut-del { opacity: 1; }
+    /* Two fields side by side are unusable under ~360px. */
+    .field-row > label { flex: 1 1 100%; }
+    /* Stop the page scrolling behind an open drawer. */
+    body.drawer-open { overflow: hidden; }
+
     .check { width: 28px; height: 28px; }
     .row-actions { opacity: 1; }
     .shortcut-del { opacity: 1; }

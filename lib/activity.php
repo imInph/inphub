@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — activity_log writer.
+ * inphub: activity_log writer.
  *
  * Every meaningful mutation (by the user, the AI, or the system) drops a row
  * here so the History section and the daily brief have a timeline to read.

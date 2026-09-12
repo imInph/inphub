@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — todos CRUD.
+ * inphub: todos CRUD.
  *
  *   GET  ?action=list[&status=&project=]
  *   POST ?action=create   { title, description?, status?, priority?, project?, tags?, due_date?, recurring? }
@@ -77,11 +77,15 @@ api_handle(function (): void {
                 'due_date'    => array_key_exists('due_date', $input) ? str_or_null($input['due_date']) : $todo['due_date'],
                 'recurring'   => array_key_exists('recurring', $input) ? str_or_null($input['recurring']) : $todo['recurring'],
             ];
+            // completed_at must track status, or a task un-checked from the UI
+            // keeps its old timestamp and stays filed under "done" in that
+            // week of the History fold forever.
             $stmt = db()->prepare(
-                'UPDATE todos SET title=?, description=?, status=?, priority=?, project=?, tags=?, due_date=?, recurring=?
+                'UPDATE todos SET title=?, description=?, status=?, priority=?, project=?, tags=?, due_date=?, recurring=?,
+                    completed_at = CASE WHEN ? = "done" THEN COALESCE(completed_at, NOW()) ELSE NULL END
                  WHERE id=? AND user_id=?'
             );
-            $stmt->execute([...array_values($fields), (int) $todo['id'], $uid]);
+            $stmt->execute([...array_values($fields), $fields['status'], (int) $todo['id'], $uid]);
             log_activity($uid, 'todo.updated', 'todo', (int) $todo['id'], 'Updated todo: ' . $fields['title']);
             ok(['id' => (int) $todo['id']]);
             break;

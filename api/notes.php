@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — notes CRUD + search.
+ * inphub: notes CRUD + search.
  *
  *   GET  ?action=list[&q=search]
  *   POST ?action=create { title?, content, tags?, pinned? }
@@ -64,14 +64,22 @@ api_handle(function (): void {
                 (int) $n['id'],
                 $uid,
             ]);
+            // Only create logged before, so History silently missed every edit
+            // a human made while still recording the AI's.
+            $title = array_key_exists('title', $input) ? str_or_null($input['title']) : $n['title'];
+            log_activity($uid, 'note.updated', 'note', (int) $n['id'],
+                'Edited note' . ($title !== null ? ': ' . $title : ''));
             ok(['id' => (int) $n['id']]);
             break;
         }
 
         case 'pin': {
             $n = fetch_owned('notes', (int) input_get($input, 'id'), $uid);
+            $pinned = (int) (bool) input_get($input, 'pinned', !$n['pinned']);
             $stmt = db()->prepare('UPDATE notes SET pinned=? WHERE id=? AND user_id=?');
-            $stmt->execute([(int) (bool) input_get($input, 'pinned', !$n['pinned']), (int) $n['id'], $uid]);
+            $stmt->execute([$pinned, (int) $n['id'], $uid]);
+            log_activity($uid, $pinned ? 'note.pinned' : 'note.unpinned', 'note', (int) $n['id'],
+                ($pinned ? 'Pinned' : 'Unpinned') . ' note' . ($n['title'] !== null ? ': ' . $n['title'] : ''));
             ok(['id' => (int) $n['id']]);
             break;
         }
@@ -80,6 +88,8 @@ api_handle(function (): void {
             $n = fetch_owned('notes', (int) input_get($input, 'id'), $uid);
             $del = db()->prepare('DELETE FROM notes WHERE id=? AND user_id=?');
             $del->execute([(int) $n['id'], $uid]);
+            log_activity($uid, 'note.deleted', 'note', (int) $n['id'],
+                'Deleted note' . ($n['title'] !== null ? ': ' . $n['title'] : ''));
             ok(['deleted' => (int) $n['id']]);
             break;
         }

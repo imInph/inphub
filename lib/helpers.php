@@ -1,12 +1,12 @@
 <?php
 /**
- * inphub — small shared helpers used by every API endpoint.
+ * inphub: small shared helpers used by every API endpoint.
  */
 
 declare(strict_types=1);
 
-/** App version — bump on release. Shown in the sidebar, login page, and export dumps. */
-const INPHUB_VERSION = '1.1.0';
+/** App version, bump on release. Shown in the sidebar, login page, and export dumps. */
+const INPHUB_VERSION = '2.0.0';
 
 /**
  * Read a value from config/config.php (the gitignored, per-machine config).
@@ -174,4 +174,152 @@ function set_setting(int $userId, string $key, ?string $value): void
          ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)'
     );
     $stmt->execute([$userId, $key, $value]);
+}
+
+/* ------------------------------------------------------------------ money */
+
+/** The user's configured base currency (default TRY). */
+function default_currency(int $userId): string
+{
+    return (string) (get_setting($userId, 'base_currency', 'TRY') ?: 'TRY');
+}
+
+/** The user's opening balance, added to the all-time net. May be negative. */
+function starting_balance(int $userId): float
+{
+    return (float) get_setting($userId, 'starting_balance', '0');
+}
+
+/** Spelled-out names for the currencies most likely to be configured. */
+const CURRENCY_NAMES = [
+    'TRY' => 'Turkish lira',
+    'USD' => 'US dollars',
+    'EUR' => 'euro',
+    'GBP' => 'pounds sterling',
+    'CHF' => 'Swiss francs',
+    'JPY' => 'Japanese yen',
+    'CAD' => 'Canadian dollars',
+    'AUD' => 'Australian dollars',
+    'SEK' => 'Swedish krona',
+    'RUB' => 'Russian rubles',
+    'AZN' => 'Azerbaijani manat',
+];
+
+/** Human name for a currency code, falling back to the code itself. */
+function currency_name(string $code): string
+{
+    $code = strtoupper(trim($code));
+    return CURRENCY_NAMES[$code] ?? $code;
+}
+
+/**
+ * Format an amount for a *machine* reader (the AI layer).
+ *
+ * Deliberately "2000.00 TRY": no thousands separator, so no locale can be
+ * inferred from the punctuation, and the currency code is always attached.
+ * The UI has its own Intl-based formatter in src/ui.ts, this is its backend
+ * counterpart, and the reason the model used to read lira as dollars.
+ */
+function money_text($amount, string $currency): string
+{
+    return number_format((float) $amount, 2, '.', '') . ' ' . strtoupper(trim($currency));
+}
+
+/** Period keys the Money view can ask for. */
+const MONEY_PERIODS = ['month', 'last_month', '3m', '6m', 'year', 'all'];
+
+/**
+ * Resolve a period key into an inclusive calendar window:
+ * ['from' => 'YYYY-MM-DD'|null, 'to' => 'YYYY-MM-DD'|null, 'label' => string].
+ * 'all' returns null bounds, callers must then omit the range predicate.
+ *
+ * Windows are whole calendar months (spent_at is a DATE, so inclusive bounds
+ * are exact). Computed here in PHP and passed as bound params, so a request
+ * never mixes PHP's clock with MySQL's CURRENT_DATE.
+ *
+ * Gotcha: only the relative-text forms ("first day of last month") are safe.
+ * date('Y-m-01', strtotime('-1 month')) overflows on the 29th-31st, on
+ * 2026-03-31 it yields 2026-03-01 instead of 2026-02-01.
+ */
+function money_period_range(string $period, ?int $now = null): array
+{
+    $now     = $now ?? time();
+    $endThis = date('Y-m-d', strtotime('last day of this month', $now));
+
+    switch ($period) {
+        case 'last_month':
+            return [
+                'from'  => date('Y-m-d', strtotime('first day of last month', $now)),
+                'to'    => date('Y-m-d', strtotime('last day of last month', $now)),
+                'label' => 'Last month',
+            ];
+        case '3m':
+            return [
+                'from'  => date('Y-m-d', strtotime('first day of -2 month', $now)),
+                'to'    => $endThis,
+                'label' => 'Last 3 months',
+            ];
+        case '6m':
+            return [
+                'from'  => date('Y-m-d', strtotime('first day of -5 month', $now)),
+                'to'    => $endThis,
+                'label' => 'Last 6 months',
+            ];
+        case 'year':
+            return ['from' => date('Y-01-01', $now), 'to' => date('Y-12-31', $now), 'label' => 'This year'];
+        case 'all':
+            return ['from' => null, 'to' => null, 'label' => 'All time'];
+        case 'month':
+        default:
+            return ['from' => date('Y-m-01', $now), 'to' => $endThis, 'label' => 'This month'];
+    }
+}
+
+/**
+ * Resolve a legacy month=YYYY-MM param into the same window shape.
+ * Returns null when the string is not a well-formed month.
+ */
+function money_month_range(string $month): ?array
+{
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        return null;
+    }
+    $ts = strtotime($month . '-01');
+    if ($ts === false) {
+        return null;
+    }
+    return [
+        'from'  => date('Y-m-01', $ts),
+        'to'    => date('Y-m-d', strtotime('last day of this month', $ts)),
+        'label' => date('F Y', $ts),
+    ];
+}
+
+/**
+ * Resolve the money window an API request is asking for.
+ *
+ * `period` (one of MONEY_PERIODS) wins; the legacy `month=YYYY-MM` param is
+ * honoured when no period is given, so the documented contract keeps working.
+ * Anything unrecognised falls back to $default. Returns the money_period_range()
+ * shape plus the resolved 'period' key.
+ *
+ * Kept self-contained (no valid_enum) so lib/ stays independent of api/.
+ */
+function money_window(array $input, string $default = 'month'): array
+{
+    $period = str_or_null(input_get($input, 'period'));
+    if ($period !== null) {
+        $key = in_array($period, MONEY_PERIODS, true) ? $period : $default;
+        return array_merge(['period' => $key], money_period_range($key));
+    }
+
+    $month = str_or_null(input_get($input, 'month'));
+    if ($month !== null) {
+        $range = money_month_range($month);
+        if ($range !== null) {
+            return array_merge(['period' => $default], $range);
+        }
+    }
+
+    return array_merge(['period' => $default], money_period_range($default));
 }

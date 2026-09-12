@@ -1,10 +1,11 @@
 /**
- * inphub — dashboard: a glanceable overview stitched from stats.php.
+ * inphub: dashboard: a glanceable overview stitched from stats.php.
  */
 
 import { apiGet, apiPost } from './api.js';
 import {
   escapeHtml, money, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues,
+  loadingState,
 } from './ui.js';
 import { go, aiAvailable } from './app.js';
 
@@ -15,6 +16,11 @@ interface DashHabit { id: number; name: string; logged_today: number; }
 interface DashCat { name: string; color: string | null; total: string; monthly_budget: string | null; }
 interface DashGoal { id: number; title: string; current_value: number; target_value: number | null; unit: string | null; }
 interface DashActivity { id: number; type: string; summary: string; actor: string; created_at: string; }
+interface DashFocus {
+  today_minutes: number;
+  week_minutes: number;
+  last: { label: string | null; duration_minutes: number; started_at: string; todo_title: string | null } | null;
+}
 interface DashData {
   owner_name: string;
   currency: string;
@@ -25,18 +31,19 @@ interface DashData {
   repos: { stale_count: number; most_neglected: { name: string; full_name: string; staleness_days: number | null; health_score: number | null } | null };
   goals: DashGoal[];
   activity: DashActivity[];
+  focus: DashFocus;
   shortcuts: Shortcut[];
 }
 
 let shortcuts: Shortcut[] = [];
 
-/** In-flight brief generation — aborted on re-render/navigation, guards re-entry. */
+/** In-flight brief generation, aborted on re-render/navigation, guards re-entry. */
 let briefCtl: AbortController | null = null;
 
 export async function renderDashboard(container: HTMLElement): Promise<void> {
   briefCtl?.abort();
   briefCtl = null;
-  container.innerHTML = `<div class="empty">Loading…</div>`;
+  container.innerHTML = `${loadingState()}`;
   const d = await apiGet<DashData>('stats', 'dashboard');
   const cur = d.currency || 'TRY';
 
@@ -57,6 +64,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
       ${cardMoney(d.money, cur)}
       ${cardRepos(d.repos)}
       ${cardGoals(d.goals)}
+      ${cardFocus(d.focus)}
       ${cardActivity(d.activity)}
     </div>
     <section style="margin-top:20px">
@@ -88,7 +96,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
 function renderShortcuts(): string {
   if (!shortcuts.length) {
     return `<div class="text-dim" style="grid-column:1/-1;padding:8px 2px">
-      No shortcuts yet — use “+ Add site” to pin the sites you open most.</div>`;
+      No shortcuts yet. Use "+ Add site" to add one.</div>`;
   }
   return shortcuts.map((s, i) => {
     let host = '';
@@ -163,10 +171,10 @@ function briefCard(content: string | null): string {
     <div class="card-head"><h3>Daily brief</h3>
       <span>
         ${content ? '<button class="btn btn-ghost btn-sm" data-action="clear-brief">🗑 Clear</button>' : ''}
-        <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? '↻ Regenerate' : '✨ Generate'}</button>
+        <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? 'Regenerate' : 'Generate'}</button>
       </span>
     </div>
-    <div class="card-scroll">${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">Generate an AI summary of your day.</div>'}</div>
+    <div class="card-scroll">${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">AI summary of your day.</div>'}</div>
   </section>`;
 }
 
@@ -184,7 +192,7 @@ async function clearBrief(container: HTMLElement): Promise<void> {
 async function generateBrief(container: HTMLElement): Promise<void> {
   const host = container.querySelector<HTMLElement>('[data-role="brief"]');
   if (!host) return;
-  if (briefCtl) return; // one request at a time — the button is also disabled
+  if (briefCtl) return; // one request at a time, the button is also disabled
 
   const btn = host.querySelector<HTMLButtonElement>('[data-action="gen-brief"]');
   if (btn) btn.disabled = true;
@@ -214,7 +222,7 @@ function cardTodos(todos: DashTodo[]): string {
             ${t.due_date ? `<span class="muted"> · ${escapeHtml(fmtDate(t.due_date))}</span>` : ''}</span>
           ${t.priority === 'urgent' || t.priority === 'high' ? `<span class="chip pri-${escapeHtml(t.priority)}">${escapeHtml(t.priority)}</span>` : ''}
         </div>`).join('')}</div>`
-    : emptyState('✓', 'Nothing due. Clear runway.');
+    : emptyState('', 'Nothing due.');
   return card('Due & overdue', 'todos', body);
 }
 
@@ -224,8 +232,8 @@ function cardHabits(habits: DashHabit[]): string {
         <button class="habit-chip ${h.logged_today ? 'done' : ''}" data-action="toggle-habit" data-id="${h.id}">
           ${h.logged_today ? '✓' : '○'} ${escapeHtml(h.name)}
         </button>`).join('')}</div>`
-    : emptyState('◎', 'No habits yet.');
-  return card('Today’s habits', 'habits', body);
+    : emptyState('', 'No habits yet.');
+  return card("Today's habits", 'habits', body);
 }
 
 function cardMoney(m: DashData['money'], cur: string): string {
@@ -277,7 +285,7 @@ function cardGoals(goals: DashGoal[]): string {
           ${g.target_value ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ''}
         </div>`;
       }).join('')}</div>`
-    : emptyState('◇', 'No active goals.');
+    : emptyState('', 'No active goals.');
   return card('Goals', 'goals', body);
 }
 
@@ -288,11 +296,27 @@ function cardActivity(items: DashActivity[]): string {
           <span class="grow">${escapeHtml(a.summary)}</span>
           <span class="muted">${a.actor === 'ai' ? '🤖 ' : ''}${escapeHtml(timeAgo(a.created_at))}</span>
         </div>`).join('')}</div>`
-    : emptyState('◷', 'No activity yet.');
+    : emptyState('', 'No activity yet.');
   return card('Recent activity', 'activity', body);
 }
 
 /* ---------------------------------------------------------------- helpers */
+
+function cardFocus(f: DashFocus): string {
+  if (!f) return '';
+  const body = `
+    <div class="field-row" style="gap:18px">
+      <div><small class="text-dim">Today</small>
+        <div class="mono tabular" style="font-size:1.3rem">${f.today_minutes} min</div></div>
+      <div><small class="text-dim">Last 7 days</small>
+        <div class="mono tabular" style="font-size:1.3rem">${f.week_minutes} min</div></div>
+    </div>
+    ${f.last
+      ? `<div class="text-dim" style="margin-top:8px">Last: ${escapeHtml(f.last.label || f.last.todo_title || 'Focus session')}
+           · ${f.last.duration_minutes}m · ${escapeHtml(timeAgo(f.last.started_at))}</div>`
+      : `<div class="text-dim" style="margin-top:8px">No sessions yet.</div>`}`;
+  return card('Focus', 'focus', body);
+}
 
 function card(title: string, view: string, body: string): string {
   return `<section class="card">

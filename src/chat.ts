@@ -1,5 +1,5 @@
 /**
- * inphub — slide-out AI chat panel (Phase 2).
+ * inphub: slide-out AI chat panel.
  *
  * Talks to api/ai.php using the portable action protocol: the backend parses
  * any actions the model requested, executes the whitelisted ones, and returns
@@ -20,7 +20,7 @@ let loaded = false;
 /** Active conversation; null until the first message starts a new one. */
 let currentSession: string | null = null;
 
-/** Session-only model override — never written to settings. Empty = settings model. */
+/** Session-only model override, never written to settings. Empty = settings model. */
 let chatModel = '';
 
 export function initChat(): void {
@@ -101,7 +101,7 @@ async function loadModels(): Promise<void> {
     list.innerHTML = res.models.map((m) => `<option value="${escapeHtml(m)}"></option>`).join('');
     input.placeholder = `Default (${res.default})`;
   } catch {
-    /* suggestions are optional — the input still accepts any model id */
+    /* suggestions are optional, the input still accepts any model id */
   }
 }
 
@@ -159,7 +159,7 @@ function newChat(): void {
   currentSession = null;
   sessionsEl().hidden = true;
   logEl().innerHTML = '';
-  appendNote('New chat — ask me anything, or tell me to do something.');
+  appendNote('New chat.');
   panel!.querySelector<HTMLInputElement>('[data-role="text"]')?.focus();
 }
 
@@ -209,7 +209,7 @@ async function send(e: Event): Promise<void> {
     thinking.remove();
     appendMessage('assistant', res.reply, res.actions);
     if (res.actions.some((a) => a.summary)) {
-      // A write happened — refresh the current view if it exposes a hash reload.
+      // A write happened, refresh the current view if it exposes a hash reload.
       window.dispatchEvent(new CustomEvent('inphub:data-changed'));
     }
   } catch (err) {

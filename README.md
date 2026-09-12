@@ -1,54 +1,90 @@
 # inphub
 
-**v1.1.0**, MIT licensed
+v2.0.0, MIT licensed.
 
-A personal life-dashboard: expenses, GitHub repos, todos, habits, goals, notes, focus sessions,
-and an activity history, all behind a hand-provisioned login, with an **optional** AI layer
-(Claude or a local Ollama). Plain PHP 8 backend (no framework), TypeScript frontend compiled to
-plain ES modules (no React, no bundler). Runs locally on XAMPP.
+A dashboard I built for myself to keep track of my own stuff in one place: money,
+tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
+changed. There's an optional AI chat on top of it (Claude, or Ollama running
+locally) but it's off by default and everything works without it.
 
-## Requirements
+It's PHP 8 and MySQL on the backend with no framework, and TypeScript on the
+frontend compiled to plain ES modules. No React, no bundler. It runs on XAMPP on
+my own machine, not on a server.
 
-- PHP 8.2+ with PDO MySQL, cURL and mbstring (XAMPP bundles these)
-- MySQL / MariaDB
-- Node.js 18+ **on a dev machine**, only needed to compile the TypeScript once
+Two things worth knowing if you poke around:
 
-## Setup (dev machine)
+- Press `k` (or Ctrl/Cmd+K) to search across tasks, money, notes, habits, goals
+  and repos, then Enter to jump to whatever you picked. `?` shows the shortcuts.
+- The Insights tab has charts that span the different sections: spend by weekday,
+  how consistent I've been with habits, focus minutes and tasks finished over
+  time, and which hours of the day I actually do things.
+
+## What you need
+
+- PHP 8.2 or newer with PDO MySQL, cURL and mbstring. XAMPP includes all of them.
+- MySQL or MariaDB.
+- Node 18+, but only to compile the TypeScript. You don't need it to run the app.
+
+## Setting it up
 
 ```bash
-# 1. Database: imports schema + seeds admin "admin" / "changeme"
-mysql -u root < inphub.sql            # or import inphub.sql via phpMyAdmin
+# 1. Database. This also creates the admin user with password "changeme".
+mysql -u root < inphub.sql
 
-# 2. Config: DB creds only, default XAMPP values work as-is
+# 2. Config. Just DB credentials. The defaults work on a stock XAMPP.
 cp config/config.example.php config/config.php
 
-# 3. Frontend: compile src/*.ts into public/assets/js/*.js
+# 3. Frontend.
 npm install
-npm run build                         # or: npm run watch  (recompiles on save)
+npm run build        # or npm run watch while you're editing
 ```
 
-Then open **http://localhost/inphub/public/** and log in with `admin` / `changeme`.
-**Change that password immediately**, it is a publicly documented default.
+Then go to http://localhost/inphub/public/ and log in as `admin` / `changeme`.
+Change that password straight away, it's written down in this file.
 
-> The compiled JS in `public/assets/js/` is **git-ignored / not committed**, so you must run
-> `npm run build` at least once before the app shell works. `login.php` is server-rendered, so
-> logging in works even before the build, but the dashboard needs the compiled modules.
+Use `npm run build`, not plain `tsc`. The build also runs
+`tools/stamp-modules.mjs`, which adds a version to every compiled import and
+writes `public/assets/js/build-id.txt` for `index.php` to read. Skip it and the
+browser can end up loading a new `app.js` next to an old cached `ui.js`, which
+throws a module error and stops the whole app from starting without explaining
+itself. I lost an hour to that one.
 
-## Deploying to the XAMPP laptop
+The compiled JS in `public/assets/js/` isn't in git, so you have to run the build
+at least once. The login page is plain PHP and works before that, but nothing
+past it does.
 
-This project is designed to be **copied as a folder** into `htdocs/inphub`:
+## Changing your password
 
-1. On the dev machine, run `npm run build` so `public/assets/js/` is populated.
-2. Copy the whole `inphub/` folder into `C:\xampp\htdocs\` (you can skip `node_modules/`).
-3. Import `inphub.sql` on the laptop and create `config/config.php` there.
-4. Browse to `http://localhost/inphub/public/`.
+Settings, then the Password box. Needs the current one, and a new one of 8
+characters or more. Other devices you stayed logged in on get signed out.
 
-All paths are relative / `__DIR__`-based and all filenames are lowercase, so the copy works
-unchanged on Windows.
+## Copying it to the XAMPP machine
 
-## Adding a user
+The whole folder goes into `htdocs`:
 
-There is no sign-up. Hash a password and insert a row:
+1. Run `npm run build` first so `public/assets/js/` is filled in.
+2. Copy the `inphub/` folder into `C:\xampp\htdocs\`. You can skip `node_modules/`.
+3. Import `inphub.sql` there and make a `config/config.php`.
+4. Open http://localhost/inphub/public/.
+
+Paths are all relative or `__DIR__`-based and filenames are lowercase, so it
+works on Windows without changes.
+
+## Upgrading an older copy
+
+If the database was set up before this version, run the migration once:
+
+```bash
+mysql -u root inphub < db/migrate-2026-09-12.sql
+```
+
+It uses `INSERT IGNORE`, so running it twice is fine and it won't overwrite
+anything you've already set. A fresh install gets all of this from `inphub.sql`
+and shouldn't run it.
+
+## Adding another user
+
+There's no sign-up page. You hash a password and insert a row yourself:
 
 ```bash
 php tools/hashpw.php "theirPassword"
@@ -59,64 +95,70 @@ INSERT INTO users (username, password_hash, display_name, role, is_active)
 VALUES ('someone', '<paste-hash>', 'Some One', 'user', 1);
 ```
 
-On first login the app seeds that user's default settings, expense categories, and habits
-(mirroring what `inphub.sql` gives user 1). Admins can also activate/deactivate accounts from
-**Settings > Accounts**.
+The first time they log in, the app fills in their default settings, expense
+categories and habits to match what user 1 gets. Admins can also switch accounts
+on and off under Settings, Accounts.
 
-## AI layer (optional)
+## The AI part
 
-Off by default. In **Settings > AI assistant**, enable it and choose a provider:
+Off unless you turn it on. In Settings, AI assistant, pick a provider:
 
-- **Claude**: paste an Anthropic API key, default model `claude-sonnet-5`.
-- **Ollama**: point at a local instance (default `http://localhost:11434`) and a pulled model.
+- Claude: paste an Anthropic API key. Default model is `claude-sonnet-5`.
+- Ollama: point it at your local instance (`http://localhost:11434` by default)
+  and a model you've pulled.
 
-Use **Test connection** to verify. Every AI-initiated change is written to the activity log with
-`actor = ai`.
+There's a Test connection button. Anything the AI changes gets written to the
+activity log with `actor = ai`, so you can see what it did.
 
-To unlock the chat's developer mode for your own account, add `'developer_user' => 'yourname'`
-to `config/config.php`. Leaving it empty (the default) disables it for everyone.
+Smaller local models needed the instructions spelled out more than Claude did
+before they could use the actions reliably, and the reply parser accepts a few
+different JSON shapes because they don't all format it the same way.
+
+If you want the chat's developer mode for your own account, add
+`'developer_user' => 'yourname'` to `config/config.php`. Empty means nobody gets
+it, which is the default.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `npm run build` | Compile `src/*.ts` into `public/assets/js/` |
-| `npm run watch` | Recompile on change |
-| `php -l <file>` | Syntax-check a PHP file (no test suite) |
-| `php tools/hashpw.php "pw"` | Print a bcrypt hash for a new user |
+| `npm run build` | Compiles `src/*.ts` into `public/assets/js/` and stamps the build id |
+| `npm run watch` | Recompiles while you edit |
+| `php -l <file>` | Syntax-checks one PHP file. There are no tests. |
+| `php tools/hashpw.php "pw"` | Prints a bcrypt hash for a new user |
 
 ## Layout
 
 ```
 config/   DB credentials (config.php is git-ignored)
-db/       PDO singleton
-lib/      shared backend (auth, helpers, provisioning, activity, github, ai)
-api/      JSON endpoints, every one guarded + scoped to the logged-in user
-public/   web root (app shell, login, compiled assets, css)
+db/       PDO connection and the dated migration files
+lib/      shared backend: auth, helpers, provisioning, activity log, github, ai
+api/      the JSON endpoints, all behind a login and scoped to one user
+public/   web root: app shell, login, css, icons, compiled JS, vendored Chart.js
 src/      TypeScript source
-tools/    CLI helpers (hashpw)
+tools/    hashpw and the build-id stamper
 ```
 
-Every `/api/*` endpoint returns one envelope, `{ "ok": true, "data": ... }` on success or
-`{ "ok": false, "error": "..." }` on failure, and scopes all queries to the logged-in user.
+Every `/api/*` endpoint replies with the same envelope, `{ "ok": true, "data": ... }`
+or `{ "ok": false, "error": "..." }`, and every query is filtered by the logged-in
+user's id.
 
-## Security notes
+## About security
 
-- Passwords are bcrypt (`password_hash`); sessions are cookie-based with a rotating,
-  hashed remember-me token.
-- All SQL uses prepared statements; no user input is ever interpolated into a query.
-- Secrets (GitHub token, Claude key) are stored per-user, rendered in password fields, and
-  **masked on read**, never echoed back in full. They live only in the database, never in a
-  file in this repo.
+- Passwords go through `password_hash()` (bcrypt). Sessions are cookies, with a
+  remember-me token that's stored hashed and rotated each time it's used.
+- Queries use prepared statements, so user input never gets concatenated into SQL.
+- The GitHub token and API key are per-user, kept in the database, shown in
+  password fields and masked when read back.
 
-> **This is built for localhost.** It is a personal tool meant to run on your own machine behind
-> XAMPP, and it has not been hardened for exposure to the internet: there is no rate limiting on
-> login and no CSRF tokens. Because the project folder sits inside `htdocs`, files outside
-> `public/` (`inphub.sql`, `db/*.sql`, `tools/hashpw.php`) are reachable over HTTP unless you
-> point the document root at `public/` or block them. Don't put this on a public server as-is.
+This is meant for localhost and I haven't hardened it for the internet. There's
+no rate limiting on the login form and no CSRF tokens. Because the folder sits
+inside `htdocs`, files outside `public/` (`inphub.sql`, `db/*.sql`,
+`tools/hashpw.php`) can be fetched over HTTP unless you point the document root
+at `public/` or block them. Don't put it on a public server as it is.
 
-There is **no automated test suite**; verification is manual against a running XAMPP instance.
+There are no automated tests. I check things by hand against a running XAMPP.
 
 ## License
 
-[MIT](LICENSE), do what you like with it, no warranty.
+[MIT](LICENSE). Do what you want with it, no warranty.

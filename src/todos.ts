@@ -1,11 +1,13 @@
 /**
- * inphub — todos: quick-add, filterable list, inline complete/edit/delete.
+ * inphub: todos: quick-add, filterable list, inline complete/edit/delete.
  */
 
 import { apiGet, apiPost } from './api.js';
 import {
   escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog,
+  flashFocused,
 } from './ui.js';
+import { currentParams } from './app.js';
 
 interface Todo {
   id: number;
@@ -25,6 +27,8 @@ const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
 let filterStatus = 'open';
+/** Free-text filter over the loaded set (title, project, tags). */
+let textFilter = '';
 
 /** Display mode: false = active list, true = weekly (Mon→Sun) history. */
 let historyMode = false;
@@ -36,18 +40,20 @@ export async function renderTodos(container: HTMLElement): Promise<void> {
       <div class="toolbar">
         <select data-role="filter" style="width:auto">
           <option value="open">Open</option>
+          <option value="">All</option>
           <option value="todo">To do</option>
           <option value="in_progress">In progress</option>
           <option value="done">Done</option>
           <option value="archived">Archived</option>
         </select>
+        <input type="search" data-role="search" placeholder="Filter tasks…" style="width:180px">
         <button class="btn" data-action="history">🕘 History</button>
-        <button class="btn" data-action="export">⬇ Export</button>
+        <button class="btn" data-action="export">Export</button>
         <button class="btn btn-primary" data-action="new">+ New</button>
       </div>
     </div>
     <form class="quick-add" data-role="quick">
-      <input name="title" placeholder="Add a task and press Enter…" data-role="search" autocomplete="off">
+      <input name="title" placeholder="Add a task and press Enter…" autocomplete="off">
     </form>
     <div data-role="list"></div>`;
 
@@ -56,6 +62,16 @@ export async function renderTodos(container: HTMLElement): Promise<void> {
   filterEl.addEventListener('change', () => {
     filterStatus = filterEl.value;
     load(container);
+  });
+
+  // `/` focuses input[data-role="search"] in the active view (src/app.ts). That
+  // used to land on the quick-add box above, so typing a search and pressing
+  // Enter created a task named after the query. This is the real search box.
+  const searchEl = container.querySelector<HTMLInputElement>('[data-role="search"]')!;
+  searchEl.value = textFilter;
+  searchEl.addEventListener('input', () => {
+    textFilter = searchEl.value.trim();
+    render(container);
   });
 
   container.querySelector<HTMLFormElement>('[data-role="quick"]')!.addEventListener('submit', async (e) => {
@@ -75,6 +91,13 @@ export async function renderTodos(container: HTMLElement): Promise<void> {
   onAction(container, (action, el) => {
     const id = Number(el.dataset.id);
     if (action === 'new') openEditor(container, null);
+    if (action === 'move') move(container, id, Number(el.dataset.dir));
+    if (action === 'filter-project') {
+      const box = container.querySelector<HTMLInputElement>('[data-role="search"]');
+      textFilter = el.dataset.project ?? '';
+      if (box) box.value = textFilter;
+      render(container);
+    }
     if (action === 'edit') openEditorById(container, id);
     if (action === 'complete') complete(container, id);
     if (action === 'delete') remove(container, id);
@@ -98,7 +121,7 @@ function openExport(): void {
     confirmLabel: 'Done',
     cancelLabel: 'Close',
     bodyHtml: `
-      <p class="text-dim" style="margin-top:0">Exports every task you own — title, status, priority, dates.</p>
+      <p class="text-dim" style="margin-top:0">Exports every task: title, status, priority, dates.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn" href="../api/export.php?action=todos_md">⬇ Markdown</a>
         <a class="btn" href="../api/export.php?action=todos_csv">⬇ CSV</a>
@@ -115,7 +138,7 @@ function syncToolbar(container: HTMLElement): void {
   if (filterEl) filterEl.hidden = historyMode;
   const btn = container.querySelector<HTMLButtonElement>('[data-action="history"]');
   if (btn) {
-    btn.textContent = historyMode ? '☰ Active list' : '🕘 History';
+    btn.textContent = historyMode ? 'Active list' : 'History';
     btn.classList.toggle('btn-primary', historyMode);
   }
 }
@@ -131,16 +154,41 @@ async function load(container: HTMLElement): Promise<void> {
   if (filterStatus === 'open') items = items.filter((t) => t.status === 'todo' || t.status === 'in_progress');
   cache = items;
 
-  if (!items.length) {
-    list.innerHTML = emptyState('✓', 'No tasks here.');
-    return;
+  render(container);
+
+  // Arrived from search or history. A done/archived task is invisible under
+  // the default "Open" filter, so widen to every status rather than looking
+  // like the jump silently failed. Guarded so a stale id can't loop.
+  const focus = currentParams().get('focus');
+  if (focus !== null && !flashFocused(container, focus) && (filterStatus !== '' || historyMode)) {
+    filterStatus = '';
+    historyMode = false;
+    syncToolbar(container);
+    const sel = container.querySelector<HTMLSelectElement>('[data-role="filter"]');
+    if (sel) sel.value = '';
+    await load(container);
   }
-  list.innerHTML = `<div class="list">${items.map(row).join('')}</div>`;
+}
+
+/** Paint the cached set through the text filter. */
+function render(container: HTMLElement): void {
+  const list = container.querySelector<HTMLElement>('[data-role="list"]');
+  if (!list || historyMode) return;
+  const q = textFilter.toLowerCase();
+  const items = q
+    ? cache.filter((t) => `${t.title} ${t.project ?? ''} ${t.tags ?? ''} ${t.priority}`.toLowerCase().includes(q))
+    : cache;
+
+  if (items.length) {
+    list.innerHTML = `<div class="list">${items.map((t, i) => row(t, i, items.length)).join('')}</div>`;
+  } else {
+    list.innerHTML = emptyState('', q ? 'No tasks match that filter.' : 'No tasks here.');
+  }
 }
 
 /* -------------------------------------------------------- weekly history */
 
-/** Monday 00:00 (local) of the week containing d — weeks run Mon→Sun. */
+/** Monday 00:00 (local) of the week containing d, weeks run Mon→Sun. */
 function mondayOf(d: Date): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
@@ -159,7 +207,7 @@ function weekLabel(monday: Date): string {
 }
 
 /**
- * Weeks are a display concept — nothing is deleted on Monday. Completed tasks
+ * Weeks are a display concept, nothing is deleted on Monday. Completed tasks
  * bucket into the week they were finished; unfinished tasks carry over to the
  * current week but stay visible (marked "carried over") in the week they were
  * created.
@@ -195,7 +243,7 @@ async function loadWeeks(container: HTMLElement, list: HTMLElement): Promise<voi
 
   const sorted = [...weeks.values()].sort((a, b) => b.monday.getTime() - a.monday.getTime());
   if (!sorted.length) {
-    list.innerHTML = emptyState('🗓', 'No tasks yet — the weekly history builds itself as you work.');
+    list.innerHTML = emptyState('', 'No tasks yet.');
     return;
   }
 
@@ -211,9 +259,9 @@ async function loadWeeks(container: HTMLElement, list: HTMLElement): Promise<voi
         <span class="chip">${escapeHtml(chips.join(' · ') || 'empty')}</span>
       </div>
       <div class="list">
-        ${w.open.map(row).join('')}
+        ${w.open.map((t, i) => row(t, i, w.open.length)).join('')}
         ${w.carried.map((t) => rowCarried(t)).join('')}
-        ${w.done.map(row).join('')}
+        ${w.done.map((t, i) => row(t, i, w.done.length)).join('')}
       </div>
     </section>`;
   }).join('');
@@ -222,29 +270,57 @@ async function loadWeeks(container: HTMLElement, list: HTMLElement): Promise<voi
 /** A task created this (past) week that rolled over to the current week. */
 function rowCarried(t: Todo): string {
   return `<div class="row" style="opacity:.65">
-    <span class="check" data-action="complete" data-id="${t.id}" title="Complete"></span>
+    <span class="check" data-action="complete" data-id="${t.id}" role="checkbox" tabindex="0" aria-checked="false" title="Complete"></span>
     <span class="grow">${escapeHtml(t.title)} <span class="muted">· carried over to this week</span></span>
   </div>`;
 }
 
-function row(t: Todo): string {
+function row(t: Todo, index = 0, total = 1): string {
   const done = t.status === 'done';
   const meta: string[] = [];
-  if (t.project) meta.push('#' + t.project);
   if (t.due_date) meta.push(fmtDate(t.due_date));
   if (t.recurring) meta.push('↻ ' + t.recurring);
-  return `<div class="row">
-    <span class="check ${done ? 'done' : ''}" data-action="complete" data-id="${t.id}" title="Complete">${done ? '✓' : ''}</span>
+  const tags = (t.tags ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  return `<div class="row" data-row="${t.id}">
+    <span class="check ${done ? 'done' : ''}" data-action="complete" data-id="${t.id}"
+      role="checkbox" tabindex="0" aria-checked="${done}" aria-label="Mark "${escapeHtml(t.title)}" done"
+      title="Complete">${done ? '✓' : ''}</span>
     <span class="grow">
       <span style="${done ? 'text-decoration:line-through;opacity:.6' : ''}">${escapeHtml(t.title)}</span>
+      ${t.project ? ` <button class="chip" data-action="filter-project" data-project="${escapeHtml(t.project)}"
+          title="Filter by this project">#${escapeHtml(t.project)}</button>` : ''}
       ${meta.length ? `<span class="muted"> · ${escapeHtml(meta.join(' · '))}</span>` : ''}
+      ${tags.map((x) => `<button class="chip" data-action="filter-project" data-project="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join(' ')}
     </span>
-    ${t.priority !== 'medium' ? `<span class="chip pri-${escapeHtml(t.priority)}">${escapeHtml(t.priority)}</span>` : ''}
+    ${t.priority !== 'medium' ? `<button class="chip pri-${escapeHtml(t.priority)}" data-action="filter-project"
+        data-project="${escapeHtml(t.priority)}" title="Filter by this priority">${escapeHtml(t.priority)}</button>` : ''}
     <span class="row-actions">
+      <button class="btn btn-ghost btn-sm" data-action="move" data-id="${t.id}" data-dir="-1"
+              title="Move up" ${index === 0 ? 'disabled' : ''}>↑</button>
+      <button class="btn btn-ghost btn-sm" data-action="move" data-id="${t.id}" data-dir="1"
+              title="Move down" ${index >= total - 1 ? 'disabled' : ''}>↓</button>
       <button class="btn btn-ghost btn-sm" data-action="edit" data-id="${t.id}">Edit</button>
       <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${t.id}">✕</button>
     </span>
   </div>`;
+}
+
+/**
+ * Swap a task with its neighbour and persist the whole order.
+ * api/todos.php has had a `reorder` action since day one with no caller.
+ */
+async function move(container: HTMLElement, id: number, dir: number): Promise<void> {
+  const ids = cache.map((t) => t.id);
+  const from = ids.indexOf(id);
+  const to = from + dir;
+  if (from < 0 || to < 0 || to >= ids.length) return;
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  try {
+    await apiPost('todos', 'reorder', { order: ids });
+    await load(container);
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Could not reorder', 'bad');
+  }
 }
 
 async function complete(container: HTMLElement, id: number): Promise<void> {
@@ -253,7 +329,10 @@ async function complete(container: HTMLElement, id: number): Promise<void> {
     if (t && t.status === 'done') {
       await apiPost('todos', 'update', { id, status: 'todo' });
     } else {
-      await apiPost('todos', 'complete', { id });
+      // `complete` already returned the respawned id; nothing ever read it, so
+      // a recurring task silently reappeared with no explanation.
+      const res = await apiPost<{ id: number; regenerated: number | null }>('todos', 'complete', { id });
+      if (res.regenerated) toast('Done. Next one added.', 'good');
     }
     load(container);
   } catch (e) {
@@ -262,12 +341,34 @@ async function complete(container: HTMLElement, id: number): Promise<void> {
 }
 
 async function remove(container: HTMLElement, id: number): Promise<void> {
+  const t = cache.find((x) => x.id === id);
   if (!(await confirmDialog('Delete this task?'))) return;
   try {
     await apiPost('todos', 'delete', { id });
     load(container);
+    // Undo re-creates from the row we still hold, so it comes back with a new
+    // id, stated in the copy rather than pretended away.
+    if (t) {
+      toast(`Deleted "${t.title}"`, '', {
+        label: 'Undo',
+        run: () => void restore(container, t),
+      });
+    }
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Failed', 'bad');
+  }
+}
+
+async function restore(container: HTMLElement, t: Todo): Promise<void> {
+  try {
+    await apiPost('todos', 'create', {
+      title: t.title, description: t.description, status: t.status, priority: t.priority,
+      project: t.project, tags: t.tags, due_date: t.due_date, recurring: t.recurring,
+    });
+    await load(container);
+    toast('Restored as a new task.', 'good');
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Could not restore', 'bad');
   }
 }
 

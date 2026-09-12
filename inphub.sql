@@ -373,6 +373,7 @@ INSERT INTO `habits` (`user_id`,`name`,`description`,`frequency`,`target_per_per
 INSERT INTO `settings` (`user_id`,`setting_key`,`setting_value`) VALUES
   (1,'theme',            'dark'),
   (1,'base_currency',    'TRY'),
+  (1,'starting_balance', '0'),                   -- opening wallet balance, may be negative
   (1,'owner_name',       ''),                    -- set in Settings UI
   (1,'github_username',  ''),                    -- set in Settings UI
   (1,'github_token',     ''),                    -- set in Settings UI

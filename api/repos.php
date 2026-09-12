@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — repo tracker (read + light mutations; sync lives in sync_repos.php).
+ * inphub: repo tracker (read + light mutations; sync lives in sync_repos.php).
  *
  *   GET  ?action=list
  *   GET  ?action=detail { id }        repo + its suggestions

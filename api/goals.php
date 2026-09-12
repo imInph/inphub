@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — goals CRUD + quick nudge.
+ * inphub: goals CRUD + quick nudge.
  *
  *   GET  ?action=list
  *   POST ?action=create { title, ... }

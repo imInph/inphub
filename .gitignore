@@ -4,7 +4,10 @@ config/config.php
 # Dependencies
 node_modules/
 
-# Compiled output — run `npm run build` to regenerate
+# Compiled output, run `npm run build` to regenerate.
+# Covers build-id.txt, which the stamper rewrites on every build.
+# Vendored third-party files deliberately live in public/assets/vendor/ instead,
+# so they still ship with the repo.
 public/assets/js/
 
 # Editor / OS cruft
@@ -17,7 +20,7 @@ Thumbs.db
 # Environment files
 .env
 
-# Secrets / keys — none of these belong in the repo, ever
+# Secrets / keys, none of these belong in the repo, ever
 *.pem
 *.key
 *.p12
@@ -36,8 +39,12 @@ Thumbs.db
 
 # Local AI-assistant scratch
 .claude/settings.local.json
+.claude/
 
 # Design/spec notes kept out of the public repo
 inphub-prompt.md
 inphub-claude-code-prompt.md
 inphub-claude-code-prompt-round2.md
+
+# The easter egg image is served from the web root, not from here
+zoktay.jpg

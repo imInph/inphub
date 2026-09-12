@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — login page.
+ * inphub: login page.
  *
  * Server-rendered so it works before the TypeScript is compiled. There is no
  * registration: accounts are created by hand in phpMyAdmin.
@@ -39,6 +39,9 @@ $theme = 'dark';
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>inphub · sign in</title>
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#0b0d12">
+    <link rel="manifest" href="manifest.json">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/css/app.css">
     <script>
@@ -54,7 +57,7 @@ $theme = 'dark';
         <div class="login-brand">
             <span class="logo-mark">in</span><span class="logo-rest">phub</span>
         </div>
-        <p class="login-sub">Your personal daily dashboard.</p>
+        <p class="login-sub">Sign in</p>
 
         <?php if ($error !== null): ?>
             <div class="login-error" role="alert"><?= htmlspecialchars($error, ENT_QUOTES) ?></div>

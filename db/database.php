@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — PDO singleton.
+ * inphub: PDO singleton.
  *
  * Usage:  $pdo = db();
  * Every query in the app goes through this connection and uses

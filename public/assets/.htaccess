@@ -1,0 +1,7 @@
+# assets/js/ holds compiled ES modules whose import URLs are versioned by
+# tools/stamp-modules.mjs, so they cannot go stale. This is belt and braces for
+# the entry point, the stylesheet and the vendored files, which are versioned by
+# query string only. With Last-Modified it costs a 304.
+<IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, must-revalidate"
+</IfModule>

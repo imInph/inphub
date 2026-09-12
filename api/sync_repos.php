@@ -1,6 +1,6 @@
 <?php
 /**
- * inphub — GitHub repo sync.
+ * inphub: GitHub repo sync.
  *
  * Pulls the user's repositories from the GitHub REST API, upserts metadata on
  * (user_id, full_name), fetches a README excerpt + license, and computes

@@ -1,8 +1,9 @@
 <?php
 /**
- * inphub — expenses (income + expense) CRUD.
+ * inphub: expenses (income + expense) CRUD.
  *
- *   GET  ?action=list[&month=YYYY-MM&category_id=&type=]
+ *   GET  ?action=list[&period=month|last_month|3m|6m|year|all&category_id=&type=]
+ *        (legacy &month=YYYY-MM still works; ?period= wins when both are sent)
  *   POST ?action=create { type, amount, currency?, category_id?, description?, payment_method?, spent_at?, is_recurring?, recurring_interval? }
  *   POST ?action=update { id, ...fields }
  *   POST ?action=delete { id }
@@ -21,9 +22,15 @@ api_handle(function (): void {
                        LEFT JOIN expense_categories c ON c.id = e.category_id
                        WHERE e.user_id = ?';
             $params = [$uid];
-            if ($month = str_or_null(input_get($input, 'month'))) {
-                $sql .= ' AND DATE_FORMAT(e.spent_at, "%Y-%m") = ?';
-                $params[] = $month;
+            // Date window: ?period= wins, ?month=YYYY-MM still honoured (legacy).
+            // A range predicate keeps spent_at bare instead of wrapping it in
+            // DATE_FORMAT(); 'all' has null bounds, so the clause is dropped.
+            // Default 'all' keeps the old contract: no date param = no date filter.
+            $win = money_window($input, 'all');
+            if ($win['from'] !== null) {
+                $sql .= ' AND e.spent_at >= ? AND e.spent_at <= ?';
+                $params[] = $win['from'];
+                $params[] = $win['to'];
             }
             if (($cat = input_get($input, 'category_id')) !== null && $cat !== '') {
                 $sql .= ' AND e.category_id = ?';
@@ -55,11 +62,12 @@ api_handle(function (): void {
                     (user_id, type, amount, currency, category_id, description, payment_method, spent_at, is_recurring, recurring_interval, created_by)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
+            $currency = strtoupper(substr((string) (input_get($input, 'currency') ?: default_currency($uid)), 0, 3));
             $stmt->execute([
                 $uid,
                 $type,
                 $amount,
-                strtoupper(substr((string) (input_get($input, 'currency') ?: default_currency($uid)), 0, 3)),
+                $currency,
                 $catId,
                 str_or_null(input_get($input, 'description')),
                 str_or_null(input_get($input, 'payment_method')),
@@ -69,8 +77,10 @@ api_handle(function (): void {
                 $createdBy,
             ]);
             $id = (int) db()->lastInsertId();
+            // Units in the summary, always: the weekly review reads these rows
+            // back to the model, and a bare number reads as dollars.
             $verb = $type === 'income' ? 'Income' : 'Spent';
-            log_activity($uid, 'expense.created', 'expense', $id, "$verb $amount", $createdBy === 'ai' ? 'ai' : 'user');
+            log_activity($uid, 'expense.created', 'expense', $id, "$verb " . money_text($amount, $currency), $createdBy === 'ai' ? 'ai' : 'user');
             ok(['id' => $id]);
             break;
         }
@@ -126,10 +136,4 @@ function assert_category_owned(?int $catId, int $uid): void
     if ($stmt->fetchColumn() === false) {
         fail('Unknown category.', 422);
     }
-}
-
-/** The user's configured base currency (default TRY). */
-function default_currency(int $uid): string
-{
-    return (string) (get_setting($uid, 'base_currency', 'TRY') ?: 'TRY');
 }

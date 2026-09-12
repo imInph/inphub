@@ -1,10 +1,11 @@
 <?php
 /**
- * inphub — auth endpoint: login + logout + who-am-i.
+ * inphub: auth endpoint: login + logout + who-am-i.
  *
  *   POST ?action=login   { username, password, remember }
  *   POST ?action=logout
  *   GET  ?action=me
+ *   POST ?action=change_password { current, next }   (requires a session)
  */
 
 require_once __DIR__ . '/_bootstrap.php';
@@ -40,6 +41,25 @@ api_handle(function (): void {
         case 'me':
             ok(['user' => current_user()]);
             break;
+
+        case 'change_password': {
+            // This endpoint is reached with requireAuth=false like the rest of
+            // the file, so the guard has to be explicit here.
+            require_login();
+            if (method() !== 'POST') {
+                fail('Use POST to change a password.', 405);
+            }
+            $res = change_password(
+                current_user_id(),
+                (string) input_get($input, 'current', ''),
+                (string) input_get($input, 'next', '')
+            );
+            if (!$res['ok']) {
+                fail((string) $res['error'], 422);
+            }
+            ok(['changed' => true]);
+            break;
+        }
 
         default:
             fail('Unknown action.', 404);

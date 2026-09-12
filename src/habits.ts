@@ -1,11 +1,13 @@
 /**
- * inphub — habits: today toggles, current/best streaks, 140-day heatmap.
+ * inphub: habits: today toggles, current/best streaks, 140-day heatmap.
  */
 
 import { apiGet, apiPost } from './api.js';
 import {
   escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate,
+  flashFocused, fmtDate, confetti,
 } from './ui.js';
+import { currentParams } from './app.js';
 import { opts } from './todos.js';
 
 interface HabitLog { habit_id: number; logged_date: string; count: number; }
@@ -14,7 +16,11 @@ interface Habit {
   target_per_period: number; color: string | null; icon: string | null;
   is_active: number; sort_order: number; logs: HabitLog[];
   logged_today: boolean; current_streak: number; best_streak: number;
+  target: number; today_count: number;
 }
+
+/** Streak lengths worth celebrating, checked after each log. */
+const MILESTONES = [7, 30, 100, 365];
 
 export async function renderHabits(container: HTMLElement): Promise<void> {
   container.innerHTML = `
@@ -29,6 +35,7 @@ export async function renderHabits(container: HTMLElement): Promise<void> {
     if (action === 'new') openEditor(container, null);
     if (action === 'edit') openEditor(container, cache.find((h) => h.id === id) ?? null);
     if (action === 'toggle') toggle(container, id);
+    if (action === 'day') toggle(container, id, el.dataset.date);
     if (action === 'delete') remove(container, id);
   });
 
@@ -45,7 +52,7 @@ async function load(container: HTMLElement): Promise<void> {
 
   if (!cache.length) {
     today.innerHTML = '';
-    list.innerHTML = emptyState('◎', 'No habits yet — add one to start a streak.');
+    list.innerHTML = emptyState('', 'No habits yet.');
     return;
   }
 
@@ -54,15 +61,20 @@ async function load(container: HTMLElement): Promise<void> {
       <button class="habit-chip ${h.logged_today ? 'done' : ''}" data-action="toggle" data-id="${h.id}" style="${h.logged_today ? '' : `border-color:${escapeHtml(h.color || '#4f8cff')}55`}">
         <span>${h.logged_today ? '✓' : (h.icon ? escapeHtml(h.icon) : '○')}</span>
         <span>${escapeHtml(h.name)}</span>
-        <span class="streak">🔥${h.current_streak}</span>
+        ${h.target > 1 ? `<span class="streak">${h.today_count}/${h.target}</span>` : ''}
+        <span class="streak">${h.current_streak}d</span>
       </button>`).join('')}</div></div>`;
 
   list.innerHTML = `<div class="grid grid-2">${cache.map(habitCard).join('')}</div>`;
+
+  // Arrived from search or history. Every habit is rendered, so there is no
+  // filter to widen, a missing id just means it was deleted.
+  flashFocused(container, currentParams().get('focus'));
 }
 
 function habitCard(h: Habit): string {
-  const logged = new Set(h.logs.map((l) => l.logged_date));
-  return `<section class="card">
+  const counts = new Map(h.logs.map((l) => [l.logged_date, l.count]));
+  return `<section class="card" data-row="${h.id}">
     <div class="card-head">
       <h3>${h.icon ? escapeHtml(h.icon) + ' ' : ''}${escapeHtml(h.name)} ${h.is_active ? '' : '<span class="chip">paused</span>'}</h3>
       <span class="row-actions" style="opacity:1">
@@ -76,30 +88,60 @@ function habitCard(h: Habit): string {
       <span>Best <strong>${h.best_streak}</strong></span>
       <span class="text-dim">${escapeHtml(h.frequency)}${h.target_per_period > 1 ? ` ×${h.target_per_period}` : ''}</span>
     </div>
-    ${heatmap(logged, h.color)}
+    ${heatmap(h, counts)}
+    
   </section>`;
 }
 
-/** A 20-week (140-day) heatmap, 7 rows tall, columns oldest→newest. */
-function heatmap(logged: Set<string>, color: string | null): string {
+/**
+ * A 20-week (140-day) heatmap, 7 rows tall, columns oldest→newest.
+ *
+ * Cells are clickable: the API has always accepted a `date`, so any missed day
+ * can be filled in, previously the grid was inert and a missed day was
+ * permanent. Partial days (count below target) use the `l1` intensity class,
+ * which existed in the CSS with nothing ever emitting it.
+ */
+function heatmap(h: Habit, counts: Map<string, number>): string {
   const cells: string[] = [];
   const start = new Date();
   start.setDate(start.getDate() - 139);
-  const c = color || '#22c55e';
+  const colour = h.color || '#22c55e';
+  const target = Math.max(1, h.target);
+  const today = localDate(new Date());
+
   for (let i = 0; i < 140; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     const key = localDate(d);
-    const on = logged.has(key);
-    cells.push(`<i class="${on ? 'l2' : ''}" title="${key}" ${on ? `style="background:${escapeHtml(c)}"` : ''}></i>`);
+    const count = counts.get(key) ?? 0;
+    const full = count >= target;
+    const partial = count > 0 && !full;
+    const label = fmtDate(key)
+      + (count > 0 ? `, ${target > 1 ? `${count}/${target}` : 'done'}` : ', not logged')
+      + (key === today ? ' (today)' : '');
+    cells.push(`<i class="${full ? 'l2' : partial ? 'l1' : ''}" data-action="day" data-id="${h.id}"
+      data-date="${key}" title="${escapeHtml(label)}"
+      ${full ? `style="background:${escapeHtml(colour)}"` : ''}></i>`);
   }
   return `<div class="heatmap">${cells.join('')}</div>`;
 }
 
-async function toggle(container: HTMLElement, id: number): Promise<void> {
+async function toggle(container: HTMLElement, id: number, date?: string): Promise<void> {
+  const before = cache.find((h) => h.id === id)?.current_streak ?? 0;
   try {
-    await apiPost('habits', 'log', { id });
+    const res = await apiPost<{ logged: boolean; count: number; target: number; date: string }>(
+      'habits', 'log', date ? { id, date } : { id });
     await load(container);
+
+    const after = cache.find((h) => h.id === id)?.current_streak ?? 0;
+    // Only celebrate crossing a milestone, never merely sitting on one.
+    const crossed = MILESTONES.find((m) => after >= m && before < m);
+    if (crossed) {
+      confetti();
+      toast(`${crossed} day streak.`, 'good');
+    } else if (res.target > 1 && res.logged) {
+      toast(`${res.count}/${res.target} today.`, res.count >= res.target ? 'good' : '');
+    }
   } catch (e) {
     toast(e instanceof Error ? e.message : 'Failed', 'bad');
   }
