@@ -241,7 +241,7 @@ function generate_brief(int $uid): array
 
     $c = ai_config($uid);
     $provider = $c['provider'];
-    $model    = $provider === 'ollama' ? $c['ollama_model'] : $c['claude_model'];
+    $model    = ai_active_model($c);
 
     $stmt = db()->prepare(
         'INSERT INTO daily_briefs (user_id, brief_date, content, provider, model)

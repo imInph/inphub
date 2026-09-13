@@ -292,7 +292,7 @@ CREATE TABLE `daily_briefs` (
   `user_id`     INT NOT NULL,
   `brief_date`  DATE NOT NULL,
   `content`     MEDIUMTEXT NOT NULL,
-  `provider`    VARCHAR(50) NULL,               -- 'claude' | 'ollama'
+  `provider`    VARCHAR(50) NULL,               -- 'claude' | 'ollama' | 'lmstudio'
   `model`       VARCHAR(100) NULL,
   `created_at`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uq_brief_user_date` (`user_id`,`brief_date`),
@@ -379,11 +379,14 @@ INSERT INTO `settings` (`user_id`,`setting_key`,`setting_value`) VALUES
   (1,'github_token',     ''),                    -- set in Settings UI
   (1,'stale_repo_days',  '60'),
   (1,'ai_enabled',       '0'),                   -- '0' off, '1' on
-  (1,'ai_provider',      'claude'),              -- 'claude' | 'ollama'
+  (1,'ai_provider',      'claude'),              -- 'claude' | 'ollama' | 'lmstudio'
   (1,'claude_api_key',   ''),                    -- set in Settings UI
   (1,'claude_model',     'claude-sonnet-5'),
   (1,'ollama_base_url',  'http://127.0.0.1:11434'),
-  (1,'ollama_model',     'llama3.1');
+  (1,'ollama_model',     'llama3.1'),
+  (1,'lmstudio_base_url', 'http://127.0.0.1:1234'),
+  (1,'lmstudio_model',   ''),                    -- a model id from LM Studio
+  (1,'lmstudio_api_key', '');                    -- optional, set in Settings UI
 
 -- ============================================================
 --  TEMPLATE — add another user by hand

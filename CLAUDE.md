@@ -99,8 +99,9 @@ the user's stored daily briefs.
 ### AI layer (`lib/ai.php` + `api/ai.php`), optional, provider-agnostic
 Off by default. `ai_available($uid)` is the ONE canonical gate for every AI feature; in `api/ai.php`
 `ai_gate()` applies it (403) to every action except `status` and `quick_add`. `ai_generate($uid,
-$system, $prompt, $opts)` reads the user's settings and dispatches to **Claude** (`/v1/messages`) or
-**Ollama** (`/api/chat`) over cURL, feature code never branches on provider. `$opts['model']`
+$system, $prompt, $opts)` reads the user's settings and dispatches to **Claude** (`/v1/messages`),
+**Ollama** (`/api/chat`) or **LM Studio** (OpenAI-compatible `/v1/chat/completions`) over cURL, feature
+code never branches on provider; `ai_active_model($c)` is the one provider → model mapping. `$opts['model']`
 overrides the model for that single call (used by the chat's per-session model combo, fed by
 `ai_list_models()`); it must never be written to settings.
 

@@ -29,6 +29,9 @@ function default_settings(): array
         'claude_model'     => 'claude-sonnet-5',
         'ollama_base_url'  => 'http://127.0.0.1:11434',
         'ollama_model'     => 'llama3.1',
+        'lmstudio_base_url' => 'http://127.0.0.1:1234',
+        'lmstudio_model'   => '',
+        'lmstudio_api_key' => '',
     ];
 }
 

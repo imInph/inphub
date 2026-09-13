@@ -18,6 +18,7 @@ interface SettingsPayload {
   ai_enabled: string; ai_provider: string;
   claude_api_key: string; claude_api_key_set: boolean; claude_model: string;
   ollama_base_url: string; ollama_model: string;
+  lmstudio_base_url: string; lmstudio_model: string; lmstudio_api_key: string; lmstudio_api_key_set: boolean;
 }
 interface AdminUser {
   id: number; username: string; display_name: string | null; role: string;
@@ -58,7 +59,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
           <label class="checkbox"><input type="checkbox" name="ai_enabled" ${aiOn ? 'checked' : ''}><span>Enable AI features</span></label>
         </div>
         <div class="field-row">
-          <label><span>Provider</span><select name="ai_provider">${opts(['claude', 'ollama'], s.ai_provider || 'claude')}</select></label>
+          <label><span>Provider</span><select name="ai_provider">${opts(['claude', 'ollama', 'lmstudio'], s.ai_provider || 'claude', { claude: 'Claude', ollama: 'Ollama', lmstudio: 'LM Studio' })}</select></label>
         </div>
         <div class="field-row">
           <label><span>Claude API key ${s.claude_api_key_set ? '<span class="chip">set</span>' : ''}</span>
@@ -68,6 +69,12 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
         <div class="field-row">
           <label><span>Ollama base URL</span><input name="ollama_base_url" value="${escapeHtml(s.ollama_base_url || 'http://localhost:11434')}"></label>
           <label><span>Ollama model</span><input name="ollama_model" value="${escapeHtml(s.ollama_model || 'llama3.1')}"></label>
+        </div>
+        <div class="field-row">
+          <label><span>LM Studio base URL</span><input name="lmstudio_base_url" value="${escapeHtml(s.lmstudio_base_url || 'http://localhost:1234')}"></label>
+          <label><span>LM Studio model</span><input name="lmstudio_model" value="${escapeHtml(s.lmstudio_model)}" placeholder="model id from LM Studio"></label>
+          <label><span>LM Studio API key ${s.lmstudio_api_key_set ? '<span class="chip">set</span>' : ''}</span>
+            <input name="lmstudio_api_key" type="password" value="${s.lmstudio_api_key_set ? SECRET_UNCHANGED : ''}" placeholder="optional"></label>
         </div>
         <div class="field-row" style="margin-top:12px">
           <button type="button" class="btn" data-role="test-ai">Test connection</button>
@@ -177,6 +184,7 @@ async function save(container: HTMLElement, form: HTMLFormElement): Promise<void
   // Drop unchanged secret masks so the stored values survive (backend also guards this).
   if (v.github_token === SECRET_UNCHANGED) delete (v as Record<string, unknown>).github_token;
   if (v.claude_api_key === SECRET_UNCHANGED) delete (v as Record<string, unknown>).claude_api_key;
+  if (v.lmstudio_api_key === SECRET_UNCHANGED) delete (v as Record<string, unknown>).lmstudio_api_key;
   try {
     await apiPost('settings', 'save', { settings: v });
     toast('Settings saved.', 'good');

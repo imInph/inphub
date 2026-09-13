@@ -1,11 +1,11 @@
 # inphub
 
-v2.0.0, MIT licensed.
+v2.1.0, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
-changed. There's an optional AI chat on top of it (Claude, or Ollama running
-locally) but it's off by default and everything works without it.
+changed. There's an optional AI chat on top of it (Claude, or Ollama / LM Studio
+running locally) but it's off by default and everything works without it.
 
 It's PHP 8 and MySQL on the backend with no framework, and TypeScript on the
 frontend compiled to plain ES modules. No React, no bundler. It runs on XAMPP on
@@ -106,6 +106,10 @@ Off unless you turn it on. In Settings, AI assistant, pick a provider:
 - Claude: paste an Anthropic API key. Default model is `claude-sonnet-5`.
 - Ollama: point it at your local instance (`http://localhost:11434` by default)
   and a model you've pulled.
+- LM Studio: start its local server (Developer tab, or `lms server start`), then
+  point it at `http://localhost:1234` and the id of a model you've downloaded. The
+  API key is only needed if you turned on authentication in LM Studio. If inphub
+  runs on a different machine, turn on "Serve on Local Network" in LM Studio.
 
 There's a Test connection button. Anything the AI changes gets written to the
 activity log with `actor = ai`, so you can see what it did.

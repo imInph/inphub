@@ -14,14 +14,18 @@ require_once __DIR__ . '/../lib/ai.php';
 const ALLOWED_SETTING_KEYS = [
     'theme', 'base_currency', 'starting_balance', 'owner_name', 'github_username', 'github_token',
     'stale_repo_days', 'ai_enabled', 'ai_provider', 'claude_api_key', 'claude_model',
-    'ollama_base_url', 'ollama_model', 'dashboard_shortcuts',
+    'ollama_base_url', 'ollama_model', 'lmstudio_base_url', 'lmstudio_model', 'lmstudio_api_key',
+    'dashboard_shortcuts',
 ];
 
 /** Keys stored as plain numbers, normalised on save so junk never round-trips. */
 const NUMERIC_SETTING_KEYS = ['starting_balance'];
 
 /** Keys whose values are secrets, masked on read, kept if unchanged on save. */
-const SECRET_SETTING_KEYS = ['github_token', 'claude_api_key'];
+const SECRET_SETTING_KEYS = ['github_token', 'claude_api_key', 'lmstudio_api_key'];
+
+/** Providers lib/ai.php can dispatch to. */
+const AI_PROVIDERS = ['claude', 'ollama', 'lmstudio'];
 
 api_handle(function (): void {
     $uid   = current_user_id();
@@ -48,6 +52,11 @@ api_handle(function (): void {
             $settings = input_get($input, 'settings', []);
             if (!is_array($settings)) {
                 fail('settings must be an object.', 422);
+            }
+            // Checked before anything is written: an unknown provider would
+            // silently fall through to Claude.
+            if (isset($settings['ai_provider']) && !in_array((string) $settings['ai_provider'], AI_PROVIDERS, true)) {
+                fail('Unknown AI provider.', 422);
             }
             $saved = [];
             foreach ($settings as $key => $value) {
