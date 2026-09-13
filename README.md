@@ -72,7 +72,9 @@ works on Windows without changes.
 
 ## Upgrading an older copy
 
-If the database was set up before this version, run the migration once:
+If your database is from before v2.0.0, run the migration once. Going from
+2.0.0 to 2.1.0 doesn't need anything, the new LM Studio settings fill themselves
+in with defaults.
 
 ```bash
 mysql -u root inphub < db/migrate-2026-09-12.sql
@@ -106,17 +108,20 @@ Off unless you turn it on. In Settings, AI assistant, pick a provider:
 - Claude: paste an Anthropic API key. Default model is `claude-sonnet-5`.
 - Ollama: point it at your local instance (`http://localhost:11434` by default)
   and a model you've pulled.
-- LM Studio: start its local server (Developer tab, or `lms server start`), then
-  point it at `http://localhost:1234` and the id of a model you've downloaded. The
-  API key is only needed if you turned on authentication in LM Studio. If inphub
-  runs on a different machine, turn on "Serve on Local Network" in LM Studio.
+- LM Studio: start the server in LM Studio first (Developer tab, or
+  `lms server start`), then point it at `http://localhost:1234` and type in the
+  name of a model you've downloaded. Leave the API key empty unless you turned
+  auth on in LM Studio. If LM Studio is on a different computer than inphub, you
+  also have to switch on "Serve on Local Network" or it just won't connect.
 
 There's a Test connection button. Anything the AI changes gets written to the
 activity log with `actor = ai`, so you can see what it did.
 
 Smaller local models needed the instructions spelled out more than Claude did
 before they could use the actions reliably, and the reply parser accepts a few
-different JSON shapes because they don't all format it the same way.
+different JSON shapes because they don't all format it the same way. Thinking
+models work too, the thinking part just gets thrown away and the app only reads
+the actual answer.
 
 If you want the chat's developer mode for your own account, add
 `'developer_user' => 'yourname'` to `config/config.php`. Empty means nobody gets
@@ -152,7 +157,7 @@ user's id.
 - Passwords go through `password_hash()` (bcrypt). Sessions are cookies, with a
   remember-me token that's stored hashed and rotated each time it's used.
 - Queries use prepared statements, so user input never gets concatenated into SQL.
-- The GitHub token and API key are per-user, kept in the database, shown in
+- The GitHub token and AI API keys are per-user, kept in the database, shown in
   password fields and masked when read back.
 
 This is meant for localhost and I haven't hardened it for the internet. There's

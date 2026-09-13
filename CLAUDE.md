@@ -19,8 +19,9 @@ be matched exactly, never invent or alter tables/columns.** If a schema change i
 `inphub.sql` for fresh installs (see `db/migrate-2026-07-19.sql` / `chat_sessions`).
 
 The app version lives in one place: `const INPHUB_VERSION` in `lib/helpers.php` (shown in the
-sidebar, login footer, and JSON export). Bump it together with `version` in `package.json` and the
-`**vX.Y.Z**` badge at the top of `README.md`.
+sidebar, login footer, and JSON export). Bump it together with `version` in `package.json`, the
+`vX.Y.Z` line at the top of `README.md`, and the console stamp at the end of `init()` in
+`src/app.ts` (hardcoded on purpose: it proves which `app.js` the browser actually loaded).
 
 ## Commands
 
