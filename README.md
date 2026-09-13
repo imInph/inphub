@@ -1,6 +1,6 @@
 # inphub
 
-v2.1.0, MIT licensed.
+v2.1.1, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
@@ -73,7 +73,7 @@ works on Windows without changes.
 ## Upgrading an older copy
 
 If your database is from before v2.0.0, run the migration once. Going from
-2.0.0 to 2.1.0 doesn't need anything, the new LM Studio settings fill themselves
+2.0.0 to 2.1.x doesn't need anything, the new LM Studio settings fill themselves
 in with defaults.
 
 ```bash

@@ -56,7 +56,7 @@ function remember_hash(string $rawToken): string
  *
  * @return array{ok:bool,error?:string}
  */
-function login(string $username, string $password, bool $remember = false): array
+function login(string $username, #[\SensitiveParameter] string $password, bool $remember = false): array
 {
     $stmt = db()->prepare('SELECT * FROM users WHERE username = ? LIMIT 1');
     $stmt->execute([$username]);
@@ -163,7 +163,7 @@ function attempt_remember_login(): void
  *
  * @return array{ok:bool, error:?string}
  */
-function change_password(int $userId, string $current, string $next): array
+function change_password(int $userId, #[\SensitiveParameter] string $current, #[\SensitiveParameter] string $next): array
 {
     if ($userId <= 0) {
         return ['ok' => false, 'error' => 'Not signed in.'];
