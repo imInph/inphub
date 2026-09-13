@@ -457,7 +457,7 @@ function init(): void {
 
   // Deploy sanity stamp: if this line is missing from the console, the browser
   // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-  console.info(`[inphub] v${'2.1.1'} ready`);
+  console.info(`[inphub] v${'2.1.2'} ready`);
 }
 
 let chatInited = false;

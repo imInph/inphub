@@ -38,8 +38,7 @@ const SPECIFIER = /(['"])(\.\/[A-Za-z0-9_.-]+\.js)(?:\?v=[0-9a-f]+)?\1/g;
 
 // Defensive: anything named vendor-*.js is treated as a third-party bundle and
 // never rewritten. Vendored files normally live in public/assets/vendor/, which
-// this script does not touch at all, because assets/js/ is gitignored as
-// compiled output and a vendored file has to ship with the repo.
+// this script does not touch at all.
 const files = readdirSync(dir).filter((f) => f.endsWith('.js'));
 const ours = files.filter((f) => !f.startsWith('vendor-'));
 if (ours.length === 0) {

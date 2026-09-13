@@ -83,8 +83,7 @@ $nav = [
     <link rel="stylesheet" href="assets/css/app.css?v=<?= $cssVer ?>">
     <?php
         // Chart.js is vendored so the charts do not depend on a CDN. It lives
-        // outside assets/js/ because that whole directory is gitignored as
-        // compiled output, and this file has to ship with the repo.
+        // outside assets/js/ so the build never touches a third-party file.
         $chartSrc = 'assets/vendor/chart-4.4.1.min.js';
         $chartVer = @filemtime(__DIR__ . '/' . $chartSrc) ?: $jsVer;
     ?>
@@ -168,6 +167,15 @@ $nav = [
             }
         });
     </script>
+    <?php if (is_file(__DIR__ . '/assets/js/app.js')): ?>
     <script type="module" src="assets/js/app.js?v=<?= htmlspecialchars($jsVer, ENT_QUOTES) ?>"></script>
+    <?php else: ?>
+    <!-- A 404 on the entry module fires no window error, so the banner above
+         never shows and the page just stays blank. Checked here instead. -->
+    <div style="position:fixed;inset:auto 0 0 0;z-index:999;padding:12px 16px;background:#ef4444;color:#fff;font:14px system-ui;text-align:center">
+        inphub's JavaScript is missing (public/assets/js/app.js). Copy the whole folder again,
+        or run <code>npm install &amp;&amp; npm run build</code>.
+    </div>
+    <?php endif; ?>
 </body>
 </html>

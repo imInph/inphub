@@ -1,6 +1,6 @@
 # inphub
 
-v2.1.1, MIT licensed.
+v2.1.2, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
@@ -23,7 +23,8 @@ Two things worth knowing if you poke around:
 
 - PHP 8.2 or newer with PDO MySQL, cURL and mbstring. XAMPP includes all of them.
 - MySQL or MariaDB.
-- Node 18+, but only to compile the TypeScript. You don't need it to run the app.
+- Node 18+, but only if you change the TypeScript. The compiled JS is already in
+  the repo, so you don't need it just to run the app.
 
 ## Setting it up
 
@@ -34,7 +35,7 @@ mysql -u root < inphub.sql
 # 2. Config. Just DB credentials. The defaults work on a stock XAMPP.
 cp config/config.example.php config/config.php
 
-# 3. Frontend.
+# 3. Frontend. Only if you're editing src/, the built JS is already there.
 npm install
 npm run build        # or npm run watch while you're editing
 ```
@@ -49,9 +50,10 @@ browser can end up loading a new `app.js` next to an old cached `ui.js`, which
 throws a module error and stops the whole app from starting without explaining
 itself. I lost an hour to that one.
 
-The compiled JS in `public/assets/js/` isn't in git, so you have to run the build
-at least once. The login page is plain PHP and works before that, but nothing
-past it does.
+The compiled JS in `public/assets/js/` is committed on purpose. Before v2.1.2 it
+wasn't, so a download from GitHub showed the sidebar and then just a blank page,
+because there was no JS to run. If you change anything in `src/`, run the build
+and commit what it outputs along with your change.
 
 ## Changing your password
 
@@ -62,9 +64,10 @@ characters or more. Other devices you stayed logged in on get signed out.
 
 The whole folder goes into `htdocs`:
 
-1. Run `npm run build` first so `public/assets/js/` is filled in.
+1. If you changed anything in `src/`, run `npm run build` first.
 2. Copy the `inphub/` folder into `C:\xampp\htdocs\`. You can skip `node_modules/`.
-3. Import `inphub.sql` there and make a `config/config.php`.
+3. Import `inphub.sql` there and copy `config/config.example.php` to
+   `config/config.php`.
 4. Open http://localhost/inphub/public/.
 
 Paths are all relative or `__DIR__`-based and filenames are lowercase, so it

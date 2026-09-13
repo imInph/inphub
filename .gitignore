@@ -4,12 +4,6 @@ config/config.php
 # Dependencies
 node_modules/
 
-# Compiled output, run `npm run build` to regenerate.
-# Covers build-id.txt, which the stamper rewrites on every build.
-# Vendored third-party files deliberately live in public/assets/vendor/ instead,
-# so they still ship with the repo.
-public/assets/js/
-
 # Editor / OS cruft
 .DS_Store
 Thumbs.db

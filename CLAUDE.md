@@ -45,13 +45,16 @@ sidebar, login footer, and JSON export). Bump it together with `version` in `pac
 
 1. Import `inphub.sql` (phpMyAdmin or `mysql -u root < inphub.sql`). Seeds admin `admin` / `changeme`.
 2. `cp config/config.example.php config/config.php` (DB creds only; default XAMPP values work as-is).
-3. `npm install && npm run build`.
+3. `npm install && npm run build` (only needed after editing `src/`; the built JS is committed).
 4. Open `http://localhost/inphub/public/` and log in.
 
-The compiled JS in `public/assets/js/` must exist for the app shell to function, always rebuild
-after editing `src/`. `config/config.php`, `node_modules/`, `public/assets/js/`, and the
-`inphub-*prompt*.md` notes are gitignored,
-so a fresh checkout needs `npm run build` before anything past the login page works.
+The compiled JS in `public/assets/js/` (including `build-id.txt`) **is committed**, so a GitHub
+download works when copied straight into `htdocs` with no Node. It was gitignored before v2.1.2,
+and a fresh download rendered the PHP sidebar over a blank page, because the entry-module 404 fires
+no window `error` event, so the index.php banner stayed silent. `index.php` now checks for `app.js`
+server-side. **Every commit that touches `src/` must include the rebuilt output from
+`npm run build`**; the build id is a content hash, so an unchanged rebuild produces no diff.
+`config/config.php`, `node_modules/`, and the `inphub-*prompt*.md` notes are gitignored.
 
 ## Architecture
 
