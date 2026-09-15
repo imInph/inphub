@@ -2,9 +2,9 @@
  * inphub: repositories: synced from GitHub, sorted by staleness, health badge,
  * pin, detail drawer with README + AI suggestions (suggestions surfaced in P2).
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, confirmDialog, flashFocused, loadingState, } from './ui.js?v=ef9086612c';
-import { aiAvailable, currentParams } from './app.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, confirmDialog, flashFocused, loadingState, } from './ui.js?v=a03b746989';
+import { aiAvailable, currentParams } from './app.js?v=a03b746989';
 let staleDays = 60;
 let cache = [];
 /** Free-text filter over the loaded repos (name, description, language). */
@@ -12,7 +12,6 @@ let repoFilter = '';
 export async function renderRepos(container) {
     container.innerHTML = `
     <div class="view-head">
-      <h2>Repositories</h2>
       <div class="toolbar">
         <input type="search" data-role="search" placeholder="Filter repos…" style="width:180px">
         ${aiAvailable ? `<button class="btn" data-action="analyze-stale" title="Runs AI analysis on every repo untouched for ${staleDays}+ days and saves suggestions to each repo's Details.">Analyze stale</button>` : ''}

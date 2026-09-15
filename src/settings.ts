@@ -7,7 +7,7 @@
 import { apiGet, apiPost } from './api.js';
 import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js';
 import { opts } from './todos.js';
-import { boot, aiAvailable, refreshAiAvailability } from './app.js';
+import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl, type Appearance } from './app.js';
 
 const SECRET_UNCHANGED = '••••••••';
 
@@ -19,7 +19,21 @@ interface SettingsPayload {
   claude_api_key: string; claude_api_key_set: boolean; claude_model: string;
   ollama_base_url: string; ollama_model: string;
   lmstudio_base_url: string; lmstudio_model: string; lmstudio_api_key: string; lmstudio_api_key_set: boolean;
+  ui_accent: string; ui_wallpaper: string; ui_wallpaper_url: string; ui_transparency: string;
 }
+
+/** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
+const ACCENTS: [string, string, string][] = [
+  ['blue', 'Blue', '#3d8bff'], ['indigo', 'Indigo', '#7a78ff'], ['purple', 'Purple', '#bf5af2'],
+  ['pink', 'Pink', '#ff5ea8'], ['red', 'Red', '#ff5a5f'], ['orange', 'Orange', '#ff9f0a'],
+  ['green', 'Green', '#30d158'], ['teal', 'Teal', '#40c8e0'], ['graphite', 'Graphite', '#9aa0ab'],
+];
+
+/** Wallpaper presets (UI_WALLPAPERS in lib/helpers.php). */
+const WALLPAPERS: [string, string][] = [
+  ['aurora', 'Aurora'], ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'],
+  ['graphite', 'Graphite'], ['plain', 'Plain'], ['custom', 'Custom'],
+];
 interface AdminUser {
   id: number; username: string; display_name: string | null; role: string;
   is_active: number; created_at: string; last_login_at: string | null;
@@ -29,18 +43,56 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   container.innerHTML = `${loadingState()}`;
   const s = await apiGet<SettingsPayload>('settings', 'get');
   const aiOn = s.ai_enabled === '1';
+  const root = document.documentElement;
+  // What is on screen right now (the cache may be newer than the server).
+  const theme = root.getAttribute('data-theme') || s.theme || 'dark';
+  const accent = root.getAttribute('data-accent') || s.ui_accent || 'blue';
+  const wallpaper = root.getAttribute('data-wallpaper') || s.ui_wallpaper || 'aurora';
+  const transparency = root.getAttribute('data-glass') || s.ui_transparency || 'full';
+  const wpUrl = s.ui_wallpaper_url || '';
 
   container.innerHTML = `
-    <div class="view-head"><h2>Settings</h2></div>
     <form data-role="form" class="grid grid-2">
+
+      <section class="card" style="grid-column:1/-1" data-role="appearance">
+        <div class="card-head"><h3>Appearance</h3><small>Changes preview instantly, Save keeps them.</small></div>
+        <div class="appearance">
+          <div class="appearance-row"><span>Theme</span>
+            <div class="segmented" role="group" aria-label="Theme">
+              ${[['dark', 'Dark'], ['light', 'Light']].map(([k, label]) => `
+                <button type="button" data-pick="theme" data-value="${k}" class="${theme === k ? 'on' : ''}" aria-pressed="${theme === k}">${label}</button>`).join('')}
+            </div>
+            <input type="hidden" name="theme" value="${escapeHtml(theme)}">
+          </div>
+          <div class="appearance-row"><span>Accent colour</span>
+            <div class="swatches">
+              ${ACCENTS.map(([k, label, hex]) => `
+                <button type="button" class="swatch ${accent === k ? 'on' : ''}" data-pick="ui_accent" data-value="${k}"
+                  style="--sw:${hex}" title="${label}" aria-label="${label}" aria-pressed="${accent === k}"></button>`).join('')}
+            </div>
+            <input type="hidden" name="ui_accent" value="${escapeHtml(accent)}">
+          </div>
+          <div class="appearance-row"><span>Wallpaper</span>
+            <div class="wp-grid">
+              ${WALLPAPERS.map(([k, label]) => `
+                <button type="button" class="wp-thumb ${wallpaper === k ? 'on' : ''}" data-pick="ui_wallpaper" data-value="${k}"
+                  data-wallpaper="${k}" aria-pressed="${wallpaper === k}"
+                  ${k === 'custom' && /^https?:\/\//i.test(wpUrl) ? `style="background-image:${escapeHtml(cssUrl(wpUrl))}"` : ''}><span>${label}</span></button>`).join('')}
+            </div>
+            <input type="hidden" name="ui_wallpaper" value="${escapeHtml(wallpaper)}">
+            <label data-role="wp-url" style="margin-top:12px" ${wallpaper === 'custom' ? '' : 'hidden'}><span>Image URL</span>
+              <input name="ui_wallpaper_url" type="url" inputmode="url" value="${escapeHtml(wpUrl)}" placeholder="https://example.com/wallpaper.jpg" autocomplete="off"></label>
+          </div>
+          <label class="checkbox"><input type="checkbox" data-role="reduce" ${transparency === 'reduced' ? 'checked' : ''}>
+            <span>Reduce transparency</span></label>
+          <input type="hidden" name="ui_transparency" value="${escapeHtml(transparency)}">
+        </div>
+      </section>
 
       <section class="card">
         <div class="card-head"><h3>Profile</h3></div>
         <label><span>Display name (owner)</span><input name="owner_name" value="${escapeHtml(s.owner_name)}"></label>
-        <div class="field-row">
-          <label><span>Theme</span><select name="theme">${opts(['dark', 'light'], s.theme || 'dark')}</select></label>
-          <label><span>Base currency</span><input name="base_currency" value="${escapeHtml(s.base_currency || 'TRY')}" maxlength="3"></label>
-        </div>
+        <label><span>Base currency</span><input name="base_currency" value="${escapeHtml(s.base_currency || 'TRY')}" maxlength="3"></label>
         <label><span>Starting balance</span>
           <input name="starting_balance" type="number" step="0.01" value="${escapeHtml(s.starting_balance || '0')}">
           <small class="text-dim">Money you had before you started logging here. Can be negative.</small></label>
@@ -123,6 +175,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     </div>`;
 
   const form = container.querySelector<HTMLFormElement>('[data-role="form"]')!;
+  wireAppearance(form);
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     save(container, form);
@@ -188,7 +241,8 @@ async function save(container: HTMLElement, form: HTMLFormElement): Promise<void
   try {
     await apiPost('settings', 'save', { settings: v });
     toast('Settings saved.', 'good');
-    if (v.theme) document.documentElement.setAttribute('data-theme', v.theme);
+    if (v.theme) applyTheme(v.theme);
+    applyAppearance(lookFromForm(v));
     // AI config may have changed, re-check so chat/brief appear or vanish now.
     await refreshAiAvailability(false);
   } catch (e) {
@@ -278,4 +332,64 @@ async function renderAdmin(container: HTMLElement): Promise<void> {
     });
   };
   draw();
+}
+
+/* ------------------------------------------------------------- appearance */
+
+function lookFromForm(v: Record<string, string>): Appearance {
+  return {
+    accent: v.ui_accent,
+    wallpaper: v.ui_wallpaper,
+    wallpaper_url: v.ui_wallpaper_url ?? '',
+    transparency: v.ui_transparency,
+  };
+}
+
+/**
+ * Live preview for the Appearance card. The hidden inputs carry the choices
+ * into the normal Save; nothing is cached until Save succeeds, so leaving
+ * without saving reverts on the next reload.
+ */
+function wireAppearance(form: HTMLFormElement): void {
+  const section = form.querySelector<HTMLElement>('[data-role="appearance"]');
+  if (!section) return;
+  const field = (name: string) => form.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+  const preview = () => {
+    const v = formValues(form);
+    applyTheme(v.theme, false);
+    applyAppearance(lookFromForm(v), false);
+  };
+
+  section.addEventListener('click', (e) => {
+    const pick = (e.target as HTMLElement).closest<HTMLElement>('[data-pick]');
+    if (!pick) return;
+    const key = pick.dataset.pick!;
+    field(key).value = pick.dataset.value!;
+    section.querySelectorAll<HTMLElement>(`[data-pick="${key}"]`).forEach((b) => {
+      b.classList.toggle('on', b === pick);
+      b.setAttribute('aria-pressed', String(b === pick));
+    });
+    if (key === 'ui_wallpaper') {
+      const urlRow = section.querySelector<HTMLElement>('[data-role="wp-url"]')!;
+      urlRow.hidden = pick.dataset.value !== 'custom';
+      if (!urlRow.hidden) urlRow.querySelector('input')?.focus();
+    }
+    preview();
+  });
+
+  section.querySelector<HTMLInputElement>('[data-role="reduce"]')?.addEventListener('change', (e) => {
+    field('ui_transparency').value = (e.target as HTMLInputElement).checked ? 'reduced' : 'full';
+    preview();
+  });
+
+  let timer = 0;
+  field('ui_wallpaper_url').addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      const url = field('ui_wallpaper_url').value.trim();
+      const thumb = section.querySelector<HTMLElement>('.wp-thumb[data-value="custom"]');
+      if (thumb) thumb.style.backgroundImage = /^https?:\/\//i.test(url) ? cssUrl(url) : '';
+      preview();
+    }, 350);
+  });
 }

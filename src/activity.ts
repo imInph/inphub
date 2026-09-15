@@ -51,7 +51,7 @@ let limit = 200;
 
 export async function renderActivity(container: HTMLElement): Promise<void> {
   container.innerHTML = `
-    <div class="view-head"><h2>History</h2>
+    <div class="view-head">
       <div class="toolbar">
         <select data-role="actor" style="width:auto">
           <option value="">Everyone</option>

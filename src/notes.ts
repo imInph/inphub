@@ -6,7 +6,7 @@ import { apiGet, apiPost } from './api.js';
 import {
   escapeHtml, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, confirmDialog,
   flashFocused,
-  loadingState,
+  loadingState, toggleMarkdownTask,
 } from './ui.js';
 import { currentParams } from './app.js';
 
@@ -20,7 +20,7 @@ let searchTimer = 0;
 
 export async function renderNotes(container: HTMLElement): Promise<void> {
   container.innerHTML = `
-    <div class="view-head"><h2>Notes</h2>
+    <div class="view-head">
       <div class="toolbar">
         <input type="search" data-role="search" placeholder="Search notes…" style="width:220px" value="${escapeHtml(query)}">
         <button class="btn btn-primary" data-action="new">+ Note</button>
@@ -42,7 +42,11 @@ export async function renderNotes(container: HTMLElement): Promise<void> {
     if (action === 'new') openEditor(container, null);
     if (action === 'edit') openEditor(container, cache.find((n) => n.id === id) ?? null);
     if (action === 'pin') pin(container, id);
-    if (action === 'read') openReader(cache.find((n) => n.id === id) ?? null);
+    if (action === 'read') openReader(container, cache.find((n) => n.id === id) ?? null);
+    if (action === 'md-task') {
+      const card = el.closest<HTMLElement>('[data-row]');
+      void toggleTask(container, card, Number(card?.dataset.row), el as HTMLInputElement);
+    }
     if (action === 'tag') {
       // Tag chips were rendered but inert, no way to see "notes tagged dev".
       query = el.dataset.tag ?? '';
@@ -81,17 +85,51 @@ async function load(container: HTMLElement): Promise<void> {
 }
 
 /** Read a note in full, the card clips at 220px and editing was the only way in. */
-function openReader(n: Note | null): void {
+function openReader(container: HTMLElement, n: Note | null): void {
   if (!n) return;
-  openModal({
+  const root = openModal({
     title: n.title || 'Untitled',
     confirmLabel: 'Close',
     cancelLabel: '',
-    bodyHtml: `<div class="md" style="max-height:60vh;overflow:auto">${markdown(n.content)}</div>
+    size: 'lg', // room for embedded players and tables
+    bodyHtml: `<div class="md" style="max-height:60vh;overflow:auto">${markdown(n.content, { tasks: true })}</div>
       <div class="text-dim" style="margin-top:10px;font-size:.8rem">
         ${escapeHtml((n.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => '#' + t).join(' '))}
         · updated ${escapeHtml(timeAgo(n.updated_at))}</div>`,
   });
+  // The modal is a fresh node per open, so a direct listener cannot stack.
+  root.addEventListener('click', (e) => {
+    const box = (e.target as HTMLElement).closest<HTMLInputElement>('input[data-action="md-task"]');
+    if (box) void toggleTask(container, root.querySelector<HTMLElement>('.md'), n.id, box);
+  });
+}
+
+/**
+ * Tick a task-list checkbox and save the note. The checkbox has already
+ * flipped by the time the click lands, so every failure path flips it back.
+ */
+async function toggleTask(container: HTMLElement, scope: HTMLElement | null, id: number, box: HTMLInputElement): Promise<void> {
+  const n = cache.find((x) => x.id === id);
+  const rendered = scope ? scope.querySelectorAll('input[data-task-index]').length : 0;
+  const next = n ? toggleMarkdownTask(n.content, Number(box.dataset.taskIndex), rendered) : null;
+  if (!n || next === null) {
+    box.checked = !box.checked;
+    toast('Could not find that task in the note, open it with Edit instead.', 'bad');
+    return;
+  }
+  box.disabled = true;
+  try {
+    await apiPost('notes', 'update', { id, content: next });
+    n.content = next;
+    // Keep the card in sync when the tick came from the reader (and vice versa).
+    const card = container.querySelector<HTMLElement>(`[data-row="${id}"] .md`);
+    if (card && card !== scope) card.innerHTML = markdown(next, { embeds: false, tasks: true });
+  } catch (e) {
+    box.checked = !box.checked;
+    toast(e instanceof Error ? e.message : 'Could not save the note', 'bad');
+  } finally {
+    box.disabled = false;
+  }
 }
 
 function card(n: Note): string {
@@ -105,7 +143,7 @@ function card(n: Note): string {
         <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${n.id}">✕</button>
       </span>
     </div>
-    <div class="md" style="max-height:220px;overflow:auto">${markdown(n.content)}</div>
+    <div class="md" style="max-height:220px;overflow:auto">${markdown(n.content, { embeds: false, tasks: true })}</div>
     <div class="repo-meta" style="margin-top:8px">
       ${tags.map((t) => `<button class="chip" data-action="tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}
       <span class="text-dim">${escapeHtml(timeAgo(n.updated_at))}</span>

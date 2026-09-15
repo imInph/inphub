@@ -25,7 +25,7 @@ let hideCompleted = false;
 
 export async function renderGoals(container: HTMLElement): Promise<void> {
   container.innerHTML = `
-    <div class="view-head"><h2>Goals</h2>
+    <div class="view-head">
       <div class="toolbar">
         <label class="checkbox" style="margin:0"><input type="checkbox" data-role="hide-done">
           <span>Hide completed</span></label>

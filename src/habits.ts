@@ -24,7 +24,7 @@ const MILESTONES = [7, 30, 100, 365];
 
 export async function renderHabits(container: HTMLElement): Promise<void> {
   container.innerHTML = `
-    <div class="view-head"><h2>Habits</h2>
+    <div class="view-head">
       <div class="toolbar"><button class="btn btn-primary" data-action="new">+ Habit</button></div>
     </div>
     <div data-role="today"></div>

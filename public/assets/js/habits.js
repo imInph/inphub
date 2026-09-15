@@ -1,15 +1,15 @@
 /**
  * inphub: habits: today toggles, current/best streaks, 140-day heatmap.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate, flashFocused, fmtDate, confetti, } from './ui.js?v=ef9086612c';
-import { currentParams } from './app.js?v=ef9086612c';
-import { opts } from './todos.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate, flashFocused, fmtDate, confetti, } from './ui.js?v=a03b746989';
+import { currentParams } from './app.js?v=a03b746989';
+import { opts } from './todos.js?v=a03b746989';
 /** Streak lengths worth celebrating, checked after each log. */
 const MILESTONES = [7, 30, 100, 365];
 export async function renderHabits(container) {
     container.innerHTML = `
-    <div class="view-head"><h2>Habits</h2>
+    <div class="view-head">
       <div class="toolbar"><button class="btn btn-primary" data-action="new">+ Habit</button></div>
     </div>
     <div data-role="today"></div>

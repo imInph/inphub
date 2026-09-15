@@ -1,15 +1,19 @@
 {
   "name": "inphub",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "private": true,
   "license": "MIT",
   "description": "Personal life-dashboard (expenses, repos, todos, habits, goals, notes, focus) — PHP + MySQL backend, TypeScript frontend.",
   "type": "module",
   "scripts": {
     "build": "tsc && node tools/stamp-modules.mjs",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "vendor": "node tools/vendor.mjs"
   },
   "devDependencies": {
+    "dompurify": "3.4.15",
+    "marked": "18.0.13",
+    "marked-footnote": "1.4.0",
     "typescript": "^5.4.0"
   }
 }

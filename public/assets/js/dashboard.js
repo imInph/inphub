@@ -1,49 +1,72 @@
 /**
- * inphub: dashboard: a glanceable overview stitched from stats.php.
+ * inphub: dashboard: Google search, a gap-free widget grid, and a shortcuts
+ * rail, all stitched from one stats.php?action=dashboard call.
+ *
+ * Which widgets show, their order and their size come from the user's
+ * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets
+ * themselves live in widgets.ts.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, money, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, loadingState, } from './ui.js?v=ef9086612c';
-import { go, aiAvailable } from './app.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=a03b746989';
+import { go } from './app.js?v=a03b746989';
+import { icon } from './icons.js?v=a03b746989';
+import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=a03b746989';
+import { openWidgetPicker } from './widget-picker.js?v=a03b746989';
+let data = null;
 let shortcuts = [];
-/** In-flight brief generation, aborted on re-render/navigation, guards re-entry. */
-let briefCtl = null;
 export async function renderDashboard(container) {
-    briefCtl?.abort();
-    briefCtl = null;
-    container.innerHTML = `${loadingState()}`;
+    abortBrief();
+    // Only the very first paint shows a skeleton; later re-renders (habit tick,
+    // capture, data-changed) swap in place instead of flashing the whole page.
+    const firstPaint = !data;
+    if (firstPaint)
+        container.innerHTML = loadingState();
     const d = await apiGet('stats', 'dashboard');
-    const cur = d.currency || 'TRY';
+    data = d;
     shortcuts = Array.isArray(d.shortcuts) ? d.shortcuts : [];
+    const rerender = () => renderDashboard(container);
+    const layout = (Array.isArray(d.layout) ? d.layout : []).filter((l) => isWidgetId(l.id) && widgetAvailable(l.id));
     container.innerHTML = `
-    <div class="view-head"><h2>Dashboard</h2>
-      <div class="toolbar"><span class="chip">${escapeHtml(d.money.month)}</span></div>
-    </div>
-    <form class="dash-search" action="https://www.google.com/search" method="get" target="_self">
-      <span class="dash-search-ico">🔍</span>
-      <input type="text" name="q" placeholder="Search Google…" autocomplete="off" spellcheck="false" data-role="search">
-    </form>
-    ${aiAvailable ? '<div data-role="brief" style="margin-bottom:16px"></div>' : ''}
-    <div class="grid grid-dash">
-      ${cardTodos(d.todos)}
-      ${cardHabits(d.habits)}
-      ${cardMoney(d.money, cur)}
-      ${cardRepos(d.repos)}
-      ${cardGoals(d.goals)}
-      ${cardFocus(d.focus)}
-      ${cardActivity(d.activity)}
-    </div>
-    <section style="margin-top:20px">
-      <div class="view-head" style="margin-bottom:12px">
-        <h3 style="margin:0">Shortcuts</h3>
-        <button class="btn btn-sm" data-action="add-shortcut">+ Add site</button>
+    <div class="dash${firstPaint ? ' dash-enter' : ''}">
+      <div class="dash-top">
+        <form class="dash-search" action="https://www.google.com/search" method="get" target="_self" role="search">
+          <span class="dash-search-ico">${icon('search', 18)}</span>
+          <input type="text" name="q" placeholder="Search Google" autocomplete="off" spellcheck="false" data-role="search" aria-label="Search Google">
+        </form>
+        <button class="btn btn-glass btn-icon dash-customize" data-action="customize" title="Customize dashboard" aria-label="Customize dashboard">
+          ${icon('customize', 20)}</button>
       </div>
-      <div class="shortcuts" data-role="shortcuts">${renderShortcuts()}</div>
-    </section>`;
+      <div class="dash-body">
+        <div class="dash-widgets" data-role="widgets">
+          ${layout.length
+        ? layout.map((l, i) => {
+            const def = WIDGETS[l.id];
+            return widgetShell(l.id, def, l.size, i, def.render(d));
+        }).join('')
+        : `<div class="card dash-empty">
+                 <div>No widgets on your dashboard.</div>
+                 <button class="btn btn-primary btn-sm" data-action="customize">Add widgets</button>
+               </div>`}
+        </div>
+        <aside class="dash-rail" aria-label="Shortcuts">
+          <div class="rail-list" data-role="shortcuts">${renderShortcuts()}</div>
+        </aside>
+      </div>
+    </div>`;
+    const grid = container.querySelector('[data-role="widgets"]');
+    masonry(grid);
+    layout.forEach((l) => WIDGETS[l.id].mount?.(container, rerender));
     onAction(container, (action, el, ev) => {
-        if (action === 'goto')
-            go(el.dataset.view);
+        if (action === 'goto') {
+            const focus = el.dataset.focus;
+            go(el.dataset.view, focus ? { focus } : undefined);
+        }
+        if (action === 'customize')
+            openWidgetPicker(data?.layout ?? [], shortcuts, () => void rerender());
         if (action === 'toggle-habit')
             toggleHabit(container, Number(el.dataset.id));
+        if (action === 'capture-mode')
+            setCaptureMode(container, el.dataset.mode ?? 'todo', rerender);
         if (action === 'gen-brief')
             generateBrief(container);
         if (action === 'clear-brief')
@@ -56,16 +79,93 @@ export async function renderDashboard(container) {
             removeShortcut(container, Number(el.dataset.idx));
         }
     });
-    if (aiAvailable)
-        loadBrief(container);
+}
+/* ---------------------------------------------------------------- masonry */
+/** Grid row unit in px; must match `grid-auto-rows` on .dash-widgets. */
+const ROW_UNIT = 4;
+/** Narrowest a widget column may get before the grid drops a column. */
+const MIN_COLUMN = 270;
+let observer = null;
+/**
+ * Pack widgets with no vertical holes. Each widget spans as many 4px grid rows
+ * as its content needs, so a short widget no longer reserves the height of a
+ * tall neighbour. The column count is derived from the width here (rather than
+ * CSS auto-fill) because a Wide widget has to know whether two columns exist.
+ *
+ * A Wide widget can still leave a hole above it in the shorter column, and
+ * `dense` only back-fills it when a later widget happens to fit. So a second
+ * pass stretches whichever widget sits above a hole down to meet the next one.
+ *
+ * The observer is module-level and replaced on every render: the grid node is
+ * rebuilt each time, and an observer left on detached nodes would leak.
+ */
+function masonry(grid) {
+    observer?.disconnect();
+    let width = -1;
+    let frame = 0;
+    const gap = () => parseFloat(getComputedStyle(grid).columnGap) || 16;
+    const widgets = () => [...grid.querySelectorAll(':scope > .widget')];
+    const pack = () => {
+        frame = 0;
+        const w = grid.clientWidth;
+        if (!w)
+            return; // hidden view; the observer re-packs once it is shown
+        const g = gap();
+        if (w !== width) {
+            width = w;
+            const cols = Math.max(1, Math.floor((w + g) / (MIN_COLUMN + g)));
+            grid.style.setProperty('--cols', String(cols));
+            widgets().forEach((el) => {
+                el.style.gridColumn = el.dataset.size === 'wide' && cols > 1 ? 'span 2' : '';
+            });
+        }
+        // Pass 1: span from content.
+        const items = widgets();
+        const base = new Map();
+        items.forEach((el) => {
+            const inner = el.firstElementChild;
+            const rows = Math.max(1, Math.ceil(((inner?.getBoundingClientRect().height ?? 0) + g) / ROW_UNIT));
+            base.set(el, rows);
+            el.style.gridRowEnd = `span ${rows}`;
+        });
+        // Pass 2: stretch into holes. Compare each widget with the nearest one
+        // below it that shares a column; anything more than a row of slack is a hole.
+        const rects = items.map((el) => ({ el, r: el.getBoundingClientRect() }));
+        rects.forEach(({ el, r }) => {
+            let below = Infinity;
+            rects.forEach(({ el: other, r: o }) => {
+                if (other === el)
+                    return;
+                const overlaps = o.left < r.right - 1 && o.right > r.left + 1;
+                if (overlaps && o.top >= r.bottom - 1)
+                    below = Math.min(below, o.top);
+            });
+            if (below === Infinity)
+                return; // bottom of its column, ragged ends are fine
+            const slack = below - r.bottom - g; // r.bottom excludes the margin gap
+            if (slack >= ROW_UNIT) {
+                el.style.gridRowEnd = `span ${base.get(el) + Math.floor(slack / ROW_UNIT)}`;
+            }
+        });
+    };
+    const schedule = () => {
+        if (!frame)
+            frame = requestAnimationFrame(pack);
+    };
+    // Synchronous first pass, so the first frame is already packed.
+    pack();
+    observer = new ResizeObserver((entries) => {
+        // Our own stretching resizes the widget boxes, never the inner content,
+        // so only real content or width changes land here.
+        if (entries.some((e) => e.target === grid ? grid.clientWidth !== width : true))
+            schedule();
+    });
+    observer.observe(grid);
+    grid.querySelectorAll('.widget-inner').forEach((inner) => observer.observe(inner));
 }
 /* -------------------------------------------------------------- shortcuts */
 function renderShortcuts() {
-    if (!shortcuts.length) {
-        return `<div class="text-dim" style="grid-column:1/-1;padding:8px 2px">
-      No shortcuts yet. Use "+ Add site" to add one.</div>`;
-    }
-    return shortcuts.map((s, i) => {
+    const tiles = shortcuts.map((s, i) => {
         let host = '';
         try {
             host = new URL(s.url).hostname;
@@ -73,16 +173,21 @@ function renderShortcuts() {
         catch {
             host = '';
         }
+        const letter = escapeHtml((s.name[0] || '?').toUpperCase());
         const fav = host
-            ? `<span class="fav"><img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64"
-           alt="" onerror="this.remove()"></span>`
-            : `<span class="fav">${escapeHtml((s.name[0] || '?').toUpperCase())}</span>`;
-        return `<a class="shortcut" href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.url)}">
+            ? `<span class="fav" data-letter="${letter}"><img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64"
+           alt="" loading="lazy" onerror="this.parentNode.textContent=this.parentNode.dataset.letter"></span>`
+            : `<span class="fav">${letter}</span>`;
+        return `<a class="rail-tile" href="${escapeHtml(s.url)}" target="_blank" rel="noopener" title="${escapeHtml(s.name)} · ${escapeHtml(s.url)}">
       ${fav}
       <span class="sc-name">${escapeHtml(s.name)}</span>
-      <button class="shortcut-del" data-action="del-shortcut" data-idx="${i}" title="Remove">✕</button>
+      <button class="shortcut-del" data-action="del-shortcut" data-idx="${i}" title="Remove" aria-label="Remove ${escapeHtml(s.name)}">${icon('close', 12)}</button>
     </a>`;
     }).join('');
+    return `${tiles}
+    <button class="rail-tile rail-add" data-action="add-shortcut" title="Add a site">
+      <span class="fav">${icon('plus', 20)}</span><span class="sc-name">Add</span>
+    </button>`;
 }
 function addShortcut(container) {
     openModal({
@@ -116,6 +221,8 @@ async function saveShortcuts(container) {
     const host = container.querySelector('[data-role="shortcuts"]');
     if (host)
         host.innerHTML = renderShortcuts();
+    if (data)
+        data.shortcuts = shortcuts;
     try {
         await apiPost('settings', 'save', { settings: { dashboard_shortcuts: JSON.stringify(shortcuts) } });
     }
@@ -123,181 +230,11 @@ async function saveShortcuts(container) {
         toast(e instanceof Error ? e.message : 'Could not save shortcuts', 'bad');
     }
 }
-async function loadBrief(container) {
-    const host = container.querySelector('[data-role="brief"]');
-    if (!host)
-        return;
-    try {
-        const res = await apiGet('ai', 'brief');
-        host.innerHTML = briefCard(res.brief?.content ?? null);
-    }
-    catch {
-        host.innerHTML = '';
-    }
-}
-function briefCard(content) {
-    return `<section class="card">
-    <div class="card-head"><h3>Daily brief</h3>
-      <span>
-        ${content ? '<button class="btn btn-ghost btn-sm" data-action="clear-brief">🗑 Clear</button>' : ''}
-        <button class="btn btn-ghost btn-sm" data-action="gen-brief">${content ? 'Regenerate' : 'Generate'}</button>
-      </span>
-    </div>
-    <div class="card-scroll">${content ? `<div class="md">${markdown(content)}</div>` : '<div class="text-dim">AI summary of your day.</div>'}</div>
-  </section>`;
-}
-async function clearBrief(container) {
-    const host = container.querySelector('[data-role="brief"]');
-    if (!host)
-        return;
-    try {
-        await apiPost('ai', 'clear_brief', {});
-        host.innerHTML = briefCard(null);
-    }
-    catch (e) {
-        toast(e instanceof Error ? e.message : 'Failed', 'bad');
-    }
-}
-async function generateBrief(container) {
-    const host = container.querySelector('[data-role="brief"]');
-    if (!host)
-        return;
-    if (briefCtl)
-        return; // one request at a time, the button is also disabled
-    const btn = host.querySelector('[data-action="gen-brief"]');
-    if (btn)
-        btn.disabled = true;
-    briefCtl = new AbortController();
-    host.querySelector('.md, .text-dim')?.replaceChildren();
-    host.querySelector('.card-head')?.insertAdjacentHTML('afterend', '<div class="text-dim" data-role="thinking">Thinking…</div>');
-    try {
-        const res = await apiPost('ai', 'generate_brief', {}, { signal: briefCtl.signal });
-        host.innerHTML = briefCard(res.brief.content);
-    }
-    catch (e) {
-        if (e instanceof DOMException && e.name === 'AbortError')
-            return; // navigated away
-        toast(e instanceof Error ? e.message : 'Failed', 'bad');
-        loadBrief(container);
-    }
-    finally {
-        briefCtl = null;
-        const b = host.querySelector('[data-action="gen-brief"]');
-        if (b)
-            b.disabled = false;
-    }
-}
-function cardTodos(todos) {
-    const body = todos.length
-        ? `<div class="list">${todos.map((t) => `
-        <div class="row">
-          <span class="grow">${escapeHtml(t.title)}
-            ${t.due_date ? `<span class="muted"> · ${escapeHtml(fmtDate(t.due_date))}</span>` : ''}</span>
-          ${t.priority === 'urgent' || t.priority === 'high' ? `<span class="chip pri-${escapeHtml(t.priority)}">${escapeHtml(t.priority)}</span>` : ''}
-        </div>`).join('')}</div>`
-        : emptyState('', 'Nothing due.');
-    return card('Due & overdue', 'todos', body);
-}
-function cardHabits(habits) {
-    const body = habits.length
-        ? `<div class="habit-chips">${habits.map((h) => `
-        <button class="habit-chip ${h.logged_today ? 'done' : ''}" data-action="toggle-habit" data-id="${h.id}">
-          ${h.logged_today ? '✓' : '○'} ${escapeHtml(h.name)}
-        </button>`).join('')}</div>`
-        : emptyState('', 'No habits yet.');
-    return card("Today's habits", 'habits', body);
-}
-function cardMoney(m, cur) {
-    const net = m.income - m.spent;
-    const cats = m.top_categories.length
-        ? `<div class="list" style="margin-top:12px">${m.top_categories.map((c) => {
-            const total = parseFloat(c.total);
-            const budget = c.monthly_budget ? parseFloat(c.monthly_budget) : null;
-            const pct = budget ? Math.min(100, Math.round((total / budget) * 100)) : null;
-            return `<div>
-          <div class="row" style="border:none;padding:2px 0;background:none">
-            <span class="grow">${dot(c.color)} ${escapeHtml(c.name)}</span>
-            <span class="mono tabular">${escapeHtml(money(total, cur))}</span>
-          </div>
-          ${pct !== null ? `<div class="progress ${pct >= 100 ? 'over' : ''}"><span style="width:${pct}%"></span></div>` : ''}
-        </div>`;
-        }).join('')}</div>`
-        : '';
-    const body = `
-    <div class="field-row">
-      <div><small>Spent</small><div class="mono tabular text-bad" style="font-size:1.3rem">${escapeHtml(money(m.spent, cur))}</div></div>
-      <div><small>Income</small><div class="mono tabular text-good" style="font-size:1.3rem">${escapeHtml(money(m.income, cur))}</div></div>
-      <div><small>Net</small><div class="mono tabular" style="font-size:1.3rem">${escapeHtml(money(net, cur))}</div></div>
-    </div>${cats}`;
-    return card('This month', 'expenses', body);
-}
-function cardRepos(r) {
-    const neglected = r.most_neglected;
-    const body = `
-    <div class="field-row">
-      <div><small>Stale repos</small><div style="font-size:1.6rem;font-weight:700">${r.stale_count}</div></div>
-      ${neglected ? `<div style="flex:2 1 200px"><small>Most neglected</small>
-        <div>${escapeHtml(neglected.name)}
-          <span class="muted">${neglected.staleness_days !== null ? `· ${neglected.staleness_days}d idle` : ''}</span></div></div>` : ''}
-    </div>`;
-    return card('Repositories', 'repos', body);
-}
-function cardGoals(goals) {
-    const body = goals.length
-        ? `<div class="list">${goals.map((g) => {
-            const pct = g.target_value ? Math.min(100, Math.round((g.current_value / g.target_value) * 100)) : 0;
-            return `<div>
-          <div class="row" style="border:none;padding:2px 0;background:none">
-            <span class="grow">${escapeHtml(g.title)}</span>
-            <span class="muted mono">${g.current_value}${g.target_value ? '/' + g.target_value : ''} ${escapeHtml(g.unit ?? '')}</span>
-          </div>
-          ${g.target_value ? `<div class="progress"><span style="width:${pct}%"></span></div>` : ''}
-        </div>`;
-        }).join('')}</div>`
-        : emptyState('', 'No active goals.');
-    return card('Goals', 'goals', body);
-}
-function cardActivity(items) {
-    const body = items.length
-        ? `<div class="list">${items.map((a) => `
-        <div class="row" style="border:none;padding:4px 0;background:none">
-          <span class="grow">${escapeHtml(a.summary)}</span>
-          <span class="muted">${a.actor === 'ai' ? '🤖 ' : ''}${escapeHtml(timeAgo(a.created_at))}</span>
-        </div>`).join('')}</div>`
-        : emptyState('', 'No activity yet.');
-    return card('Recent activity', 'activity', body);
-}
 /* ---------------------------------------------------------------- helpers */
-function cardFocus(f) {
-    if (!f)
-        return '';
-    const body = `
-    <div class="field-row" style="gap:18px">
-      <div><small class="text-dim">Today</small>
-        <div class="mono tabular" style="font-size:1.3rem">${f.today_minutes} min</div></div>
-      <div><small class="text-dim">Last 7 days</small>
-        <div class="mono tabular" style="font-size:1.3rem">${f.week_minutes} min</div></div>
-    </div>
-    ${f.last
-        ? `<div class="text-dim" style="margin-top:8px">Last: ${escapeHtml(f.last.label || f.last.todo_title || 'Focus session')}
-           · ${f.last.duration_minutes}m · ${escapeHtml(timeAgo(f.last.started_at))}</div>`
-        : `<div class="text-dim" style="margin-top:8px">No sessions yet.</div>`}`;
-    return card('Focus', 'focus', body);
-}
-function card(title, view, body) {
-    return `<section class="card">
-    <div class="card-head"><h3>${escapeHtml(title)}</h3>
-      <button class="btn btn-ghost btn-sm" data-action="goto" data-view="${escapeHtml(view)}">Open →</button></div>
-    <div class="card-scroll">${body}</div>
-  </section>`;
-}
-function dot(color) {
-    return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${escapeHtml(color || '#6b7280')}"></span>`;
-}
 async function toggleHabit(container, id) {
     try {
         await apiPost('habits', 'log', { id });
-        renderDashboard(container);
+        await renderDashboard(container);
     }
     catch (e) {
         toast(e instanceof Error ? e.message : 'Failed', 'bad');

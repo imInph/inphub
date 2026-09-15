@@ -10,10 +10,10 @@
  * (as an earlier version did) stacks handlers on a node that is never
  * replaced; see the onAction() note in CLAUDE.md for the same hazard.
  */
-import { go } from './app.js?v=ef9086612c';
-import { openChat } from './chat.js?v=ef9086612c';
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=ef9086612c';
+import { go } from './app.js?v=a03b746989';
+import { openChat } from './chat.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=a03b746989';
 const VIEW_COMMANDS = [
     ['dashboard', 'Dashboard'],
     ['todos', 'To-Do'],

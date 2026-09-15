@@ -34,7 +34,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $theme = 'dark';
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="<?= htmlspecialchars($theme, ENT_QUOTES) ?>">
+<html lang="en" data-theme="<?= htmlspecialchars($theme, ENT_QUOTES) ?>" data-accent="blue" data-wallpaper="aurora" data-glass="full">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -42,18 +42,35 @@ $theme = 'dark';
     <meta name="color-scheme" content="dark light">
     <meta name="theme-color" content="#0b0d12">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="assets/css/app.css">
+    <!-- Safari and older browsers ignore SVG favicons and fall back to /favicon.ico
+         at the server root, which on XAMPP is XAMPP's logo. The .ico/.png links
+         stop that fallback; ?v= busts browsers' long favicon cache on a redesign. -->
+    <link rel="icon" href="favicon.ico?v=<?= htmlspecialchars(INPHUB_VERSION) ?>" sizes="32x32">
+    <link rel="icon" href="favicon.svg?v=<?= htmlspecialchars(INPHUB_VERSION) ?>" type="image/svg+xml">
+    <link rel="icon" href="favicon-32.png?v=<?= htmlspecialchars(INPHUB_VERSION) ?>" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=<?= htmlspecialchars(INPHUB_VERSION) ?>">
+    <link rel="stylesheet" href="assets/css/app.css?v=<?= @filemtime(__DIR__ . '/assets/css/app.css') ?: time() ?>">
     <script>
-        // Use the last-chosen theme (cached by the app) instead of always dark.
+        // Use the last-chosen theme + appearance (cached by the app) instead of
+        // always dark on the default wallpaper. No session here, so the cache
+        // is the only source.
         try {
             var t = localStorage.getItem('inphub.theme');
             if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            var a = JSON.parse(localStorage.getItem('inphub.appearance') || 'null');
+            if (a && typeof a === 'object') {
+                var h = document.documentElement;
+                if (a.accent) h.setAttribute('data-accent', a.accent);
+                if (a.wallpaper) h.setAttribute('data-wallpaper', a.wallpaper);
+                if (a.transparency) h.setAttribute('data-glass', a.transparency);
+                if (a.image) h.style.setProperty('--wp-image', a.image);
+            }
         } catch (e) {}
     </script>
 </head>
 <body class="login-body">
-    <main class="login-card">
+    <div class="wallpaper" aria-hidden="true"></div>
+    <main class="login-card glass">
         <div class="login-brand">
             <span class="logo-mark">in</span><span class="logo-rest">phub</span>
         </div>

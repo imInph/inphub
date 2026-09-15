@@ -1,9 +1,9 @@
 /**
  * inphub: todos: quick-add, filterable list, inline complete/edit/delete.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=ef9086612c';
-import { currentParams } from './app.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=a03b746989';
+import { currentParams } from './app.js?v=a03b746989';
 const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 let filterStatus = 'open';
@@ -14,7 +14,6 @@ let historyMode = false;
 export async function renderTodos(container) {
     container.innerHTML = `
     <div class="view-head">
-      <h2>To-Do</h2>
       <div class="toolbar">
         <select data-role="filter" style="width:auto">
           <option value="open">Open</option>

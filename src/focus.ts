@@ -105,7 +105,6 @@ export async function renderFocus(container: HTMLElement): Promise<void> {
   if (state.startedAt === null && state.elapsed === 0 && !running()) restore();
 
   container.innerHTML = `
-    <div class="view-head"><h2>Focus</h2></div>
     <div class="grid grid-2">
       <section class="card">
         <div class="timer-display" data-role="display">${clock(remainingSecs())}</div>

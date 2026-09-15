@@ -6,21 +6,21 @@
  * `render(container)` entry point; we import them all up front (small app, no
  * bundler) and mount the active one into its <section id="view-<id>">.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { toast, openModal, escapeHtml } from './ui.js?v=ef9086612c';
-import { initChat } from './chat.js?v=ef9086612c';
-import { initPalette, setPaletteChat } from './command-palette.js?v=ef9086612c';
-import { renderDashboard } from './dashboard.js?v=ef9086612c';
-import { renderTodos } from './todos.js?v=ef9086612c';
-import { renderExpenses } from './expenses.js?v=ef9086612c';
-import { renderRepos } from './repos.js?v=ef9086612c';
-import { renderHabits } from './habits.js?v=ef9086612c';
-import { renderGoals } from './goals.js?v=ef9086612c';
-import { renderNotes } from './notes.js?v=ef9086612c';
-import { renderFocus } from './focus.js?v=ef9086612c';
-import { renderInsights } from './insights.js?v=ef9086612c';
-import { renderActivity } from './activity.js?v=ef9086612c';
-import { renderSettings } from './settings.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { toast, openModal, escapeHtml } from './ui.js?v=a03b746989';
+import { initChat } from './chat.js?v=a03b746989';
+import { initPalette, setPaletteChat } from './command-palette.js?v=a03b746989';
+import { renderDashboard } from './dashboard.js?v=a03b746989';
+import { renderTodos } from './todos.js?v=a03b746989';
+import { renderExpenses } from './expenses.js?v=a03b746989';
+import { renderRepos } from './repos.js?v=a03b746989';
+import { renderHabits } from './habits.js?v=a03b746989';
+import { renderGoals } from './goals.js?v=a03b746989';
+import { renderNotes } from './notes.js?v=a03b746989';
+import { renderFocus } from './focus.js?v=a03b746989';
+import { renderInsights } from './insights.js?v=a03b746989';
+import { renderActivity } from './activity.js?v=a03b746989';
+import { renderSettings } from './settings.js?v=a03b746989';
 export const boot = window.INPHUB;
 const VIEWS = {
     dashboard: renderDashboard,
@@ -81,13 +81,19 @@ async function activate(route) {
     currentView = view;
     routeParams = route.params;
     currentRoute = routeKey(route);
-    document.querySelectorAll('.nav-item').forEach((el) => {
+    document.querySelectorAll('.nav-item[data-view]').forEach((el) => {
         const active = el.dataset.view === view;
         el.classList.toggle('active', active);
         if (active)
             el.setAttribute('aria-current', 'page');
         else
             el.removeAttribute('aria-current');
+        // The large title in the topbar names the page, the views no longer do.
+        if (active) {
+            const title = document.getElementById('page-title');
+            if (title)
+                title.textContent = el.querySelector('.nav-label')?.textContent ?? '';
+        }
     });
     document.querySelectorAll('.view').forEach((section) => {
         section.hidden = section.id !== `view-${view}`;
@@ -146,19 +152,56 @@ export function refreshCurrentView() {
 }
 /* -------------------------------------------------------------------- theme */
 const THEME_KEY = 'inphub.theme';
-function applyTheme(theme) {
+const APPEARANCE_KEY = 'inphub.appearance';
+/**
+ * Apply a theme and cache it. Every theme change goes through here, Settings'
+ * save used to set the attribute without the cache, so the stale cached value
+ * won again on the next reload.
+ */
+export function applyTheme(theme, remember = true) {
     document.documentElement.setAttribute('data-theme', theme);
+    if (!remember)
+        return;
+    try {
+        localStorage.setItem(THEME_KEY, theme);
+    }
+    catch {
+        /* storage unavailable */
+    }
+}
+/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (css_url() in PHP). */
+export function cssUrl(url) {
+    return `url("${url.replace(/[\\"'()\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))}")`;
+}
+/**
+ * Apply accent, wallpaper and transparency to <html> and cache them for the
+ * pre-paint scripts in index.php / login.php.
+ */
+export function applyAppearance(a, remember = true) {
+    const root = document.documentElement;
+    root.setAttribute('data-accent', a.accent || 'blue');
+    root.setAttribute('data-wallpaper', a.wallpaper || 'aurora');
+    root.setAttribute('data-glass', a.transparency || 'full');
+    const image = a.wallpaper_url && /^https?:\/\//i.test(a.wallpaper_url) ? cssUrl(a.wallpaper_url) : '';
+    if (image)
+        root.style.setProperty('--wp-image', image);
+    else
+        root.style.removeProperty('--wp-image');
+    if (!remember)
+        return;
+    try {
+        localStorage.setItem(APPEARANCE_KEY, JSON.stringify({
+            accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, image, url: a.wallpaper_url,
+        }));
+    }
+    catch {
+        /* storage unavailable */
+    }
 }
 async function toggleTheme() {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    // Cached instantly so the choice survives a reload even if the save fails.
     applyTheme(next);
-    // Instant local cache so the choice survives a reload even if the save fails.
-    try {
-        localStorage.setItem(THEME_KEY, next);
-    }
-    catch {
-        /* storage unavailable, settings save below still covers it */
-    }
     try {
         await apiPost('settings', 'save', { settings: { theme: next } });
     }
@@ -340,8 +383,19 @@ function init() {
     catch {
         /* storage unavailable */
     }
-    applyTheme(cached === 'light' || cached === 'dark' ? cached : (boot.theme || 'dark'));
+    applyTheme(cached === 'light' || cached === 'dark' ? cached : (boot.theme || 'dark'), false);
+    // The pre-paint script already applied the cached appearance; the server
+    // values only fill in when there is no cache yet (first visit, new device).
+    try {
+        if (!localStorage.getItem(APPEARANCE_KEY) && boot.appearance)
+            applyAppearance(boot.appearance);
+    }
+    catch {
+        if (boot.appearance)
+            applyAppearance(boot.appearance, false);
+    }
     greet();
+    alive();
     tick();
     setInterval(tick, 1000);
     // Mobile nav drawer (hamburger is only visible at the small breakpoint).
@@ -396,7 +450,37 @@ function init() {
     window.__inphubLoaded = true;
     // Deploy sanity stamp: if this line is missing from the console, the browser
     // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-    console.info(`[inphub] v${'2.1.2'} ready`);
+    console.info(`[inphub] v${'3.0.0'} ready`);
+}
+/**
+ * The two ambient touches: the title bar turns to glass once content scrolls
+ * under it (iOS nav bars), and cards carry a soft highlight that follows the
+ * pointer. Both are decorative, so if an extension swallows these listeners
+ * (see the inline-onclick note above) nothing breaks.
+ */
+function alive() {
+    const topbar = document.querySelector('.topbar');
+    const onScroll = () => topbar?.classList.toggle('scrolled', window.scrollY > 4);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    if (!window.matchMedia('(hover: hover)').matches)
+        return;
+    let frame = 0;
+    let last = null;
+    document.addEventListener('pointermove', (e) => {
+        last = e;
+        if (frame)
+            return;
+        frame = requestAnimationFrame(() => {
+            frame = 0;
+            const card = last?.target?.closest?.('.card');
+            if (!card || !last)
+                return;
+            const r = card.getBoundingClientRect();
+            card.style.setProperty('--mx', `${Math.round(last.clientX - r.left)}px`);
+            card.style.setProperty('--my', `${Math.round(last.clientY - r.top)}px`);
+        });
+    }, { passive: true });
 }
 let chatInited = false;
 /**

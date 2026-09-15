@@ -5,8 +5,8 @@
  * vocabulary as Money. Chart.js is a global, vendored in public/assets/js and
  * loaded by the shell, so charts cost nothing extra here.
  */
-import { apiGet } from './api.js?v=ef9086612c';
-import { escapeHtml, money, fmtMonth, fmtDate, emptyState, loadingState, onAction } from './ui.js?v=ef9086612c';
+import { apiGet } from './api.js?v=a03b746989';
+import { escapeHtml, money, fmtMonth, fmtDate, emptyState, loadingState, onAction } from './ui.js?v=a03b746989';
 /** Same six windows as Money, server keys live in MONEY_PERIODS. */
 const PERIODS = [
     ['month', 'This month'],
@@ -54,7 +54,6 @@ function palette() {
 export async function renderInsights(container) {
     container.innerHTML = `
     <div class="view-head">
-      <h2>Insights</h2>
       <div class="toolbar">
         <select data-role="period" style="width:auto">
           ${PERIODS.map(([k, label]) => `<option value="${k}"${k === period ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}

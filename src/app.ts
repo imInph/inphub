@@ -24,10 +24,19 @@ import { renderInsights } from './insights.js';
 import { renderActivity } from './activity.js';
 import { renderSettings } from './settings.js';
 
+/** Wallpaper, accent and transparency, mirrors ui_appearance() in lib/helpers.php. */
+export interface Appearance {
+  accent: string;
+  wallpaper: string;
+  wallpaper_url: string;
+  transparency: string;
+}
+
 /** The bootstrap payload injected by index.php. */
 export interface BootData {
   user: { id: number; username: string; display_name: string | null; role: string };
   theme: string;
+  appearance: Appearance;
 }
 
 declare global {
@@ -120,11 +129,16 @@ async function activate(route: Route): Promise<void> {
   routeParams = route.params;
   currentRoute = routeKey(route);
 
-  document.querySelectorAll<HTMLElement>('.nav-item').forEach((el) => {
+  document.querySelectorAll<HTMLElement>('.nav-item[data-view]').forEach((el) => {
     const active = el.dataset.view === view;
     el.classList.toggle('active', active);
     if (active) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
+    // The large title in the topbar names the page, the views no longer do.
+    if (active) {
+      const title = document.getElementById('page-title');
+      if (title) title.textContent = el.querySelector('.nav-label')?.textContent ?? '';
+    }
   });
   document.querySelectorAll<HTMLElement>('.view').forEach((section) => {
     section.hidden = section.id !== `view-${view}`;
@@ -184,20 +198,54 @@ export function refreshCurrentView(): void {
 /* -------------------------------------------------------------------- theme */
 
 const THEME_KEY = 'inphub.theme';
+const APPEARANCE_KEY = 'inphub.appearance';
 
-function applyTheme(theme: string): void {
+/**
+ * Apply a theme and cache it. Every theme change goes through here, Settings'
+ * save used to set the attribute without the cache, so the stale cached value
+ * won again on the next reload.
+ */
+export function applyTheme(theme: string, remember = true): void {
   document.documentElement.setAttribute('data-theme', theme);
+  if (!remember) return;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (css_url() in PHP). */
+export function cssUrl(url: string): string {
+  return `url("${url.replace(/[\\"'()\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))}")`;
+}
+
+/**
+ * Apply accent, wallpaper and transparency to <html> and cache them for the
+ * pre-paint scripts in index.php / login.php.
+ */
+export function applyAppearance(a: Appearance, remember = true): void {
+  const root = document.documentElement;
+  root.setAttribute('data-accent', a.accent || 'blue');
+  root.setAttribute('data-wallpaper', a.wallpaper || 'aurora');
+  root.setAttribute('data-glass', a.transparency || 'full');
+  const image = a.wallpaper_url && /^https?:\/\//i.test(a.wallpaper_url) ? cssUrl(a.wallpaper_url) : '';
+  if (image) root.style.setProperty('--wp-image', image);
+  else root.style.removeProperty('--wp-image');
+  if (!remember) return;
+  try {
+    localStorage.setItem(APPEARANCE_KEY, JSON.stringify({
+      accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, image, url: a.wallpaper_url,
+    }));
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 async function toggleTheme(): Promise<void> {
   const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  // Cached instantly so the choice survives a reload even if the save fails.
   applyTheme(next);
-  // Instant local cache so the choice survives a reload even if the save fails.
-  try {
-    localStorage.setItem(THEME_KEY, next);
-  } catch {
-    /* storage unavailable, settings save below still covers it */
-  }
   try {
     await apiPost('settings', 'save', { settings: { theme: next } });
   } catch {
@@ -394,8 +442,16 @@ function init(): void {
   } catch {
     /* storage unavailable */
   }
-  applyTheme(cached === 'light' || cached === 'dark' ? cached : (boot.theme || 'dark'));
+  applyTheme(cached === 'light' || cached === 'dark' ? cached : (boot.theme || 'dark'), false);
+  // The pre-paint script already applied the cached appearance; the server
+  // values only fill in when there is no cache yet (first visit, new device).
+  try {
+    if (!localStorage.getItem(APPEARANCE_KEY) && boot.appearance) applyAppearance(boot.appearance);
+  } catch {
+    if (boot.appearance) applyAppearance(boot.appearance, false);
+  }
   greet();
+  alive();
   tick();
   setInterval(tick, 1000);
 
@@ -457,7 +513,36 @@ function init(): void {
 
   // Deploy sanity stamp: if this line is missing from the console, the browser
   // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-  console.info(`[inphub] v${'2.1.2'} ready`);
+  console.info(`[inphub] v${'3.0.0'} ready`);
+}
+
+/**
+ * The two ambient touches: the title bar turns to glass once content scrolls
+ * under it (iOS nav bars), and cards carry a soft highlight that follows the
+ * pointer. Both are decorative, so if an extension swallows these listeners
+ * (see the inline-onclick note above) nothing breaks.
+ */
+function alive(): void {
+  const topbar = document.querySelector<HTMLElement>('.topbar');
+  const onScroll = () => topbar?.classList.toggle('scrolled', window.scrollY > 4);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  if (!window.matchMedia('(hover: hover)').matches) return;
+  let frame = 0;
+  let last: PointerEvent | null = null;
+  document.addEventListener('pointermove', (e) => {
+    last = e;
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const card = (last?.target as HTMLElement | null)?.closest?.<HTMLElement>('.card');
+      if (!card || !last) return;
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', `${Math.round(last.clientX - r.left)}px`);
+      card.style.setProperty('--my', `${Math.round(last.clientY - r.top)}px`);
+    });
+  }, { passive: true });
 }
 
 let chatInited = false;

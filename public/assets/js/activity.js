@@ -2,9 +2,9 @@
  * inphub: activity history: a filterable timeline that links through to the
  * thing each row is about.
  */
-import { apiGet } from './api.js?v=ef9086612c';
-import { escapeHtml, timeAgo, fmtDate, emptyState, onAction, loadingState } from './ui.js?v=ef9086612c';
-import { go } from './app.js?v=ef9086612c';
+import { apiGet } from './api.js?v=a03b746989';
+import { escapeHtml, timeAgo, fmtDate, emptyState, onAction, loadingState } from './ui.js?v=a03b746989';
+import { go } from './app.js?v=a03b746989';
 /**
  * Entity types that have somewhere to go. `log_activity` also writes `user`
  * (admin actions) and `brief` (AI output), which have no per-row destination,
@@ -40,7 +40,7 @@ let typeFilter = '';
 let limit = 200;
 export async function renderActivity(container) {
     container.innerHTML = `
-    <div class="view-head"><h2>History</h2>
+    <div class="view-head">
       <div class="toolbar">
         <select data-role="actor" style="width:auto">
           <option value="">Everyone</option>

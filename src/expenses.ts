@@ -78,7 +78,6 @@ let lineChart: any = null;
 export async function renderExpenses(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="view-head">
-      <h2>Money</h2>
       <div class="toolbar">
         <select data-role="period" style="width:auto">
           ${PERIODS.map(([k, label]) =>

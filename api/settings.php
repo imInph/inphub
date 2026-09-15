@@ -15,7 +15,15 @@ const ALLOWED_SETTING_KEYS = [
     'theme', 'base_currency', 'starting_balance', 'owner_name', 'github_username', 'github_token',
     'stale_repo_days', 'ai_enabled', 'ai_provider', 'claude_api_key', 'claude_model',
     'ollama_base_url', 'ollama_model', 'lmstudio_base_url', 'lmstudio_model', 'lmstudio_api_key',
-    'dashboard_shortcuts',
+    'dashboard_shortcuts', 'dashboard_widgets',
+    'ui_accent', 'ui_wallpaper', 'ui_wallpaper_url', 'ui_transparency',
+];
+
+/** Keys restricted to a fixed set of values (lists live in lib/helpers.php). */
+const ENUM_SETTING_KEYS = [
+    'ui_accent'       => UI_ACCENTS,
+    'ui_wallpaper'    => UI_WALLPAPERS,
+    'ui_transparency' => UI_TRANSPARENCY,
 ];
 
 /** Keys stored as plain numbers, normalised on save so junk never round-trips. */
@@ -57,6 +65,27 @@ api_handle(function (): void {
             // silently fall through to Claude.
             if (isset($settings['ai_provider']) && !in_array((string) $settings['ai_provider'], AI_PROVIDERS, true)) {
                 fail('Unknown AI provider.', 422);
+            }
+            // Same rule for everything else with a shape: validate the whole
+            // request first, so a bad value never leaves a half-applied save.
+            foreach (ENUM_SETTING_KEYS as $key => $allowed) {
+                if (isset($settings[$key]) && !in_array((string) $settings[$key], $allowed, true)) {
+                    fail("Invalid value for $key.", 422);
+                }
+            }
+            if (isset($settings['ui_wallpaper_url'])) {
+                $url = trim((string) $settings['ui_wallpaper_url']);
+                if ($url !== '' && !is_http_url($url)) {
+                    fail('The wallpaper must be an http(s) image URL.', 422);
+                }
+                $settings['ui_wallpaper_url'] = $url;
+            }
+            if (array_key_exists('dashboard_widgets', $settings)) {
+                $layout = normalise_dashboard_layout($settings['dashboard_widgets']);
+                if ($layout === null) {
+                    fail('dashboard_widgets must be a list of widgets.', 422);
+                }
+                $settings['dashboard_widgets'] = json_encode($layout);
             }
             $saved = [];
             foreach ($settings as $key => $value) {

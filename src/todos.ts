@@ -36,7 +36,6 @@ let historyMode = false;
 export async function renderTodos(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="view-head">
-      <h2>To-Do</h2>
       <div class="toolbar">
         <select data-role="filter" style="width:auto">
           <option value="open">Open</option>

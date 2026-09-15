@@ -98,6 +98,8 @@ export interface ModalOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm?: (root: HTMLElement) => boolean | void | Promise<boolean | void>;
+  /** 'lg' widens the sheet (the dashboard's Customize sheet). */
+  size?: 'lg';
 }
 
 /**
@@ -111,7 +113,7 @@ export function openModal(opts: ModalOptions): HTMLElement {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
+    <div class="modal${opts.size === 'lg' ? ' modal-lg' : ''}" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
       <h3 id="${titleId}">${escapeHtml(opts.title)}</h3>
       <div class="modal-body">${opts.bodyHtml}</div>
       <div class="modal-actions">
@@ -311,98 +313,256 @@ export function flashFocused(container: HTMLElement, focus: string | null): bool
 
 /* ---------------------------------------------------------- safe markdown */
 
-/**
- * Render a small, safe markdown subset to HTML: headings, bold/italic, inline
- * code, fenced code, links, unordered/ordered lists, paragraphs. All text is
- * escaped first, so no raw HTML from the source can survive.
- */
-export function markdown(src: string): string {
-  if (!src) return '';
-  const escaped = escapeHtml(src);
-  const lines = escaped.split('\n');
-  const out: string[] = [];
-  let inCode = false;
-  let listType: 'ul' | 'ol' | null = null;
-  let para: string[] = [];
-
-  const flushPara = () => {
-    if (para.length) {
-      out.push('<p>' + inline(para.join(' ')) + '</p>');
-      para = [];
-    }
-  };
-  const flushList = () => {
-    if (listType) {
-      out.push(`</${listType}>`);
-      listType = null;
-    }
-  };
-
-  for (const line of lines) {
-    const fence = line.trim().startsWith('```');
-    if (fence) {
-      flushPara();
-      flushList();
-      if (!inCode) {
-        out.push('<pre><code>');
-        inCode = true;
-      } else {
-        out.push('</code></pre>');
-        inCode = false;
-      }
-      continue;
-    }
-    if (inCode) {
-      out.push(line + '\n');
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,3})\s+(.*)$/);
-    if (heading) {
-      flushPara();
-      flushList();
-      const level = heading[1].length;
-      out.push(`<h${level}>${inline(heading[2])}</h${level}>`);
-      continue;
-    }
-
-    const ul = line.match(/^\s*[-*]\s+(.*)$/);
-    const ol = line.match(/^\s*\d+\.\s+(.*)$/);
-    if (ul || ol) {
-      flushPara();
-      const want = ul ? 'ul' : 'ol';
-      if (listType !== want) {
-        flushList();
-        out.push(`<${want}>`);
-        listType = want as 'ul' | 'ol';
-      }
-      out.push('<li>' + inline((ul ? ul[1] : ol![1])) + '</li>');
-      continue;
-    }
-
-    if (line.trim() === '') {
-      flushPara();
-      flushList();
-      continue;
-    }
-    para.push(line);
+/** The vendored globals markdown() needs (public/assets/vendor, see tools/vendor.mjs). */
+interface MarkedParser {
+  parse(src: string, opts?: { async: false }): string;
+  use(...extensions: unknown[]): MarkedParser;
+}
+declare global {
+  interface Window {
+    marked?: { Marked: new (opts?: Record<string, unknown>) => MarkedParser };
+    markedFootnote?: (opts?: Record<string, unknown>) => unknown;
+    DOMPurify?: { sanitize(html: string, cfg: Record<string, unknown>): DocumentFragment };
   }
-  if (inCode) out.push('</code></pre>');
-  flushPara();
-  flushList();
-  return out.join('\n');
 }
 
-/** Inline markdown: bold, italic, code, links. Operates on already-escaped text. */
-function inline(text: string): string {
-  return text
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(
-      /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener">$1</a>',
-    );
+export interface MarkdownOptions {
+  /** Turn a bare YouTube/Vimeo/Spotify/SoundCloud link on its own line into a player. Default true. */
+  embeds?: boolean;
+  /** Make `- [ ]` task checkboxes clickable (notes). Default false: rendered, but disabled. */
+  tasks?: boolean;
+}
+
+/**
+ * A per-page random marker put on the checkboxes marked generates, so they can
+ * be told apart from any <input type=checkbox> written as raw HTML. Only real
+ * task-list items may become clickable, the toggle edits the source by index.
+ */
+const TASK_MARK = 'inphub-task-' + Math.random().toString(36).slice(2, 10);
+
+/** Classes markdown output may keep: code languages and footnote markup. */
+const SAFE_CLASS = /^(language-[\w+#-]+|footnotes|sr-only)$/;
+
+let parser: MarkedParser | null = null;
+
+function markdownParser(): MarkedParser | null {
+  if (parser) return parser;
+  const lib = window.marked;
+  if (!lib) return null;
+  parser = new lib.Marked({ gfm: true, breaks: true, silent: true });
+  if (window.markedFootnote) parser.use(window.markedFootnote());
+  parser.use({
+    renderer: {
+      checkbox({ checked }: { checked: boolean }): string {
+        return `<input type="checkbox" class="${TASK_MARK}"${checked ? ' checked' : ''} disabled> `;
+      },
+    },
+  });
+  return parser;
+}
+
+/**
+ * Render markdown (GitHub flavour: tables, task lists, strikethrough,
+ * footnotes, autolinks, raw HTML…) to safe HTML.
+ *
+ * marked parses, DOMPurify sanitises, then a DOM pass adds what sanitising
+ * cannot: link targets, lazy images, embedded players and task checkboxes.
+ * Used for notes, chat replies, the daily brief, the weekly review and repo
+ * READMEs, which come from GitHub, so the sanitiser settings matter:
+ * - data-* attributes are stripped, or content could carry `data-action` and
+ *   fire the view's delegated onAction() handler (delete, pin…) on click;
+ * - ids/names are prefixed (SANITIZE_NAMED_PROPS) so an `id="toasts"` cannot
+ *   shadow the app's own nodes;
+ * - style, forms and iframes are forbidden; the only iframes are the embeds
+ *   built below from a parsed video/track id, never from the raw URL.
+ */
+export function markdown(src: string, opts: MarkdownOptions = {}): string {
+  if (!src) return '';
+  const md = markdownParser();
+  const purify = window.DOMPurify;
+  if (!md || !purify) {
+    // Vendor scripts missing (bad copy): plain text, never unsanitised HTML.
+    return `<p>${escapeHtml(src).replace(/\n/g, '<br>')}</p>`;
+  }
+  installAnchorHandler();
+
+  const frag = purify.sanitize(md.parse(src, { async: false }), {
+    RETURN_DOM_FRAGMENT: true,
+    SANITIZE_NAMED_PROPS: true,
+    ALLOW_DATA_ATTR: false,
+    FORBID_TAGS: ['style', 'form', 'button', 'textarea', 'select', 'option', 'iframe', 'frame', 'frameset',
+      'object', 'embed', 'link', 'meta', 'base', 'dialog'],
+    FORBID_ATTR: ['style', 'tabindex', 'autofocus'],
+  });
+
+  frag.querySelectorAll('input').forEach((input) => {
+    if (input.type !== 'checkbox') input.remove();
+  });
+
+  // Raw HTML may not borrow the app's own classes: `<div class="palette">`
+  // in a README would be a fixed full-screen overlay. Keep only the classes
+  // marked and the footnote extension emit.
+  frag.querySelectorAll('[class]').forEach((el) => {
+    const keep = [...el.classList].filter((c) => SAFE_CLASS.test(c) || c === TASK_MARK);
+    if (keep.length) el.setAttribute('class', keep.join(' '));
+    else el.removeAttribute('class');
+  });
+
+  frag.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+    if ((a.getAttribute('href') ?? '').startsWith('#')) return; // footnotes, in-note anchors
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+  });
+
+  frag.querySelectorAll('img').forEach((img) => {
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+  });
+
+  let taskIndex = 0;
+  frag.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((box) => {
+    const real = box.classList.contains(TASK_MARK);
+    box.className = real ? 'md-task' : '';
+    box.disabled = true;
+    if (!real) return;
+    box.closest('li')?.classList.add('md-task-item');
+    if (opts.tasks) {
+      box.disabled = false;
+      box.setAttribute('data-task-index', String(taskIndex));
+      box.setAttribute('data-action', 'md-task');
+      box.setAttribute('aria-label', 'Toggle task');
+    }
+    taskIndex++;
+  });
+
+  if (opts.embeds !== false) {
+    frag.querySelectorAll('p').forEach((p) => {
+      const nodes = [...p.childNodes].filter((n) => !(n.nodeType === Node.TEXT_NODE && !n.textContent?.trim()));
+      const a = nodes.length === 1 && nodes[0] instanceof HTMLAnchorElement ? nodes[0] : null;
+      if (!a || a.textContent?.trim() !== a.getAttribute('href')) return; // bare links only
+      const embed = buildEmbed(a.href);
+      if (embed) p.replaceWith(embed);
+    });
+  }
+
+  const host = document.createElement('div');
+  host.appendChild(frag);
+  return host.innerHTML;
+}
+
+/**
+ * A player for a supported link, or null. The iframe src is assembled from an
+ * id matched out of the URL, so nothing else from the link reaches it.
+ */
+function buildEmbed(href: string): HTMLElement | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  const host = url.hostname.replace(/^(www|m|music)\./, '');
+  const path = url.pathname;
+  let src = '';
+  let kind: 'video' | 'audio' | 'audio-tall' = 'video';
+
+  if (host === 'youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com') {
+    const id = host === 'youtu.be'
+      ? path.slice(1).split('/')[0]
+      : url.searchParams.get('v') ?? path.match(/^\/(?:shorts|embed|live)\/([^/?#]+)/)?.[1] ?? '';
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) return null;
+    const start = youtubeStart(url.searchParams.get('t') ?? url.searchParams.get('start'));
+    src = `https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ''}`;
+  } else if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+    const id = path.match(/(?:^|\/)(\d{5,12})(?:$|\/)/)?.[1];
+    if (!id) return null;
+    src = `https://player.vimeo.com/video/${id}`;
+  } else if (host === 'open.spotify.com') {
+    const m = path.match(/^\/(?:intl-[a-z-]+\/)?(?:embed\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]{10,40})/);
+    if (!m) return null;
+    src = `https://open.spotify.com/embed/${m[1]}/${m[2]}`;
+    kind = m[1] === 'track' || m[1] === 'episode' ? 'audio' : 'audio-tall';
+  } else if (host === 'soundcloud.com') {
+    if (!/^\/[\w-]+\/[\w-]+/.test(path)) return null;
+    src = `https://w.soundcloud.com/player/?url=${encodeURIComponent(`https://soundcloud.com${path}`)}&visual=false`;
+    kind = 'audio';
+  } else {
+    return null;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = `md-embed md-embed-${kind}`;
+  const frame = document.createElement('iframe');
+  frame.src = src;
+  frame.title = 'Embedded player';
+  frame.loading = 'lazy';
+  // YouTube refuses to play without a referrer; strict-origin sends only the origin.
+  frame.referrerPolicy = 'strict-origin-when-cross-origin';
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+  frame.setAttribute('allow', 'encrypted-media; picture-in-picture; fullscreen; clipboard-write');
+  frame.setAttribute('allowfullscreen', '');
+  wrap.appendChild(frame);
+  return wrap;
+}
+
+/** YouTube's t= / start= ("90", "90s", "1m30s", "1h2m3s") as whole seconds. */
+function youtubeStart(value: string | null): number {
+  if (!value) return 0;
+  if (/^\d+$/.test(value)) return Number(value);
+  const m = value.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
+
+let anchorHandler = false;
+
+/**
+ * In-note anchors (footnotes, `[see](#section)`) would otherwise change
+ * location.hash, which is the SPA's router: the click would navigate to the
+ * dashboard. Scroll to the target inside the same rendered block instead, so
+ * two notes on one page with the same footnote ids never cross over.
+ */
+function installAnchorHandler(): void {
+  if (anchorHandler) return;
+  anchorHandler = true;
+  document.addEventListener('click', (e) => {
+    const a = (e.target as Element | null)?.closest?.<HTMLAnchorElement>('.md a[href^="#"]');
+    if (!a) return;
+    e.preventDefault();
+    const id = decodeURIComponent((a.getAttribute('href') ?? '').slice(1));
+    const root = a.closest('.md');
+    if (!id || !root) return;
+    const target = root.querySelector(`[id="${CSS.escape('user-content-' + id)}"]`)
+      ?? root.querySelector(`[id="${CSS.escape(id)}"]`);
+    target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+}
+
+/**
+ * Flip the n-th `- [ ]` / `- [x]` marker in markdown source. Markers inside
+ * fenced code blocks are skipped, exactly as marked skips them, so index n is
+ * the n-th clickable checkbox markdown() rendered. Returns null when the source
+ * has a different number of tasks than were rendered (an edge case such as an
+ * indented code block), so a toggle can never edit the wrong line.
+ */
+export function toggleMarkdownTask(src: string, index: number, renderedCount: number): string | null {
+  const lines = src.split('\n');
+  const hits: number[] = [];
+  let fence: string | null = null;
+  lines.forEach((line, i) => {
+    const f = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (f) {
+      if (fence === null) fence = f[1][0];
+      else if (f[1][0] === fence) fence = null;
+      return;
+    }
+    if (fence === null && /^(\s*>)*\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\](?=\s|$)/.test(line)) hits.push(i);
+  });
+  if (hits.length !== renderedCount || index < 0 || index >= hits.length) return null;
+  const at = hits[index];
+  lines[at] = lines[at].replace(/\[([ xX])\]/, (_m, mark: string) => (mark === ' ' ? '[x]' : '[ ]'));
+  return lines.join('\n');
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -531,4 +691,98 @@ export function formValues(root: HTMLElement): Record<string, string> {
     }
   });
   return out;
+}
+
+/* --------------------------------------------------------------- sortable */
+
+/**
+ * Make the direct children of `list` reorderable by dragging their
+ * `[data-handle]`. Pointer events rather than HTML5 drag-and-drop, which never
+ * fires for touch. Buttons with `data-move="-1|1"` inside a child move it one
+ * step, for keyboards. `onChange` runs after every reorder.
+ *
+ * Binds to `list` itself, so call it once per freshly built list node.
+ */
+export function sortable(list: HTMLElement, onChange: () => void): void {
+  let dragging: HTMLElement | null = null;
+  let pointerId = -1;
+  let offsetY = 0;
+
+  const items = () => [...list.children].filter((c): c is HTMLElement => c instanceof HTMLElement && c.dataset.sort !== undefined);
+
+  list.addEventListener('pointerdown', (e) => {
+    const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-handle]');
+    const item = handle?.closest<HTMLElement>('[data-sort]');
+    if (!handle || !item || item.parentElement !== list || e.button !== 0) return;
+    e.preventDefault();
+    dragging = item;
+    pointerId = e.pointerId;
+    offsetY = e.clientY - item.getBoundingClientRect().top;
+    handle.setPointerCapture(e.pointerId);
+    item.classList.add('dragging');
+  });
+
+  list.addEventListener('pointermove', (e) => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    const y = e.clientY;
+    const siblings = items().filter((c) => c !== dragging);
+    // Insert before the first sibling whose midpoint is below the pointer.
+    const before = siblings.find((c) => {
+      const r = c.getBoundingClientRect();
+      return y - offsetY + dragging!.offsetHeight / 2 < r.top + r.height / 2;
+    });
+    if (before) {
+      if (dragging.nextElementSibling !== before) list.insertBefore(dragging, before);
+    } else if (siblings.length) {
+      const lastItem = siblings[siblings.length - 1];
+      if (lastItem.nextElementSibling !== dragging) lastItem.after(dragging);
+    }
+  });
+
+  const end = (e: PointerEvent) => {
+    if (!dragging || e.pointerId !== pointerId) return;
+    dragging.classList.remove('dragging');
+    dragging = null;
+    pointerId = -1;
+    onChange();
+  };
+  list.addEventListener('pointerup', end);
+  list.addEventListener('pointercancel', end);
+
+  list.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-move]');
+    const item = btn?.closest<HTMLElement>('[data-sort]');
+    if (!btn || !item || item.parentElement !== list) return;
+    e.preventDefault();
+    const all = items();
+    const to = all.indexOf(item) + Number(btn.dataset.move);
+    if (to < 0 || to >= all.length) return;
+    if (Number(btn.dataset.move) < 0) all[to].before(item);
+    else all[to].after(item);
+    btn.focus();
+    onChange();
+  });
+}
+
+/* -------------------------------------------------------------- sparkline */
+
+/**
+ * A tiny inline-SVG line (+ soft fill) for a widget. Strokes currentColor, so
+ * the caller colours it with CSS and it follows the theme with no redraw.
+ */
+export function sparkline(values: number[], width = 240, height = 56): string {
+  if (values.length < 2) return '';
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const pad = 3;
+  const pts = values.map((v, i) => [
+    (i / (values.length - 1)) * width,
+    pad + (1 - (v - min) / span) * (height - pad * 2),
+  ]);
+  const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  return `<svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${line} L${width} ${height} L0 ${height} Z" fill="currentColor" opacity=".12"/>
+    <path d="${line}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
 }

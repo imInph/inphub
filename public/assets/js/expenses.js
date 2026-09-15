@@ -7,10 +7,10 @@
  * does not reset on the 1st) and Budgets are always the current calendar month
  * (a monthly_budget only means anything against a month).
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, money, fmtDate, fmtMonth, todayStr, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=ef9086612c';
-import { currentParams } from './app.js?v=ef9086612c';
-import { opts } from './todos.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, money, fmtDate, fmtMonth, todayStr, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=a03b746989';
+import { currentParams } from './app.js?v=a03b746989';
+import { opts } from './todos.js?v=a03b746989';
 /** Selectable windows, server-side keys in lib/helpers.php MONEY_PERIODS. */
 const PERIODS = [
     ['month', 'This month'],
@@ -53,7 +53,6 @@ let lineChart = null;
 export async function renderExpenses(container) {
     container.innerHTML = `
     <div class="view-head">
-      <h2>Money</h2>
       <div class="toolbar">
         <select data-role="period" style="width:auto">
           ${PERIODS.map(([k, label]) => `<option value="${k}"${k === period ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}

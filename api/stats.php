@@ -106,7 +106,69 @@ function dashboard_payload(int $uid): array
     );
     $lastFocus->execute([$uid]);
 
+    // Wallet: the all-time balance (same maths as Money's "current net") and
+    // how it moved over the last 30 days, walked back from today.
+    $lifetime = $pdo->prepare(
+        "SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0)
+         FROM expenses WHERE user_id=?"
+    );
+    $lifetime->execute([$uid]);
+    $balance = starting_balance($uid) + (float) $lifetime->fetchColumn();
+
+    $walletFrom = date('Y-m-d', strtotime('-29 days'));
+    $walletTo   = date('Y-m-d');
+    $daily = $pdo->prepare(
+        "SELECT spent_at AS d, COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0) AS net
+         FROM expenses WHERE user_id=? AND spent_at >= ? AND spent_at <= ?
+         GROUP BY d ORDER BY d ASC"
+    );
+    $daily->execute([$uid, $walletFrom, $walletTo]);
+    $netMap = [];
+    foreach ($daily->fetchAll() as $row) {
+        $netMap[(string) $row['d']] = (float) $row['net'];
+    }
+    // Entries dated after today count toward the balance but sit outside the
+    // chart, so start the walk from the balance as of today.
+    $future = $pdo->prepare(
+        "SELECT COALESCE(SUM(CASE WHEN type='income' THEN amount ELSE -amount END),0)
+         FROM expenses WHERE user_id=? AND spent_at > ?"
+    );
+    $future->execute([$uid, $walletTo]);
+    $running = $balance - (float) $future->fetchColumn();
+    $days    = expense_series_fill($netMap, 'day', $walletFrom, $walletTo);
+    $series  = [];
+    for ($i = count($days) - 1; $i >= 0; $i--) {
+        $series[$i] = ['d' => $days[$i]['d'], 'balance' => round($running, 2)];
+        $running -= (float) $days[$i]['total'];
+    }
+    ksort($series);
+
+    // Upcoming: the week after today. Today and overdue are the "Due" widget's.
+    $upTodos = $pdo->prepare(
+        "SELECT id, title, priority, due_date FROM todos
+         WHERE user_id=? AND status IN ('todo','in_progress')
+           AND due_date > CURRENT_DATE AND due_date <= CURRENT_DATE + INTERVAL 7 DAY
+         ORDER BY due_date ASC, FIELD(priority,'urgent','high','medium','low'), id DESC LIMIT 20"
+    );
+    $upTodos->execute([$uid]);
+    $upGoals = $pdo->prepare(
+        "SELECT id, title, target_date FROM goals
+         WHERE user_id=? AND status='active'
+           AND target_date > CURRENT_DATE AND target_date <= CURRENT_DATE + INTERVAL 7 DAY
+         ORDER BY target_date ASC, id DESC LIMIT 10"
+    );
+    $upGoals->execute([$uid]);
+
     return [
+        'layout'      => dashboard_layout($uid),
+        'wallet'      => [
+            'balance' => round($balance, 2),
+            'series'  => array_values($series),
+        ],
+        'upcoming'    => [
+            'todos' => $upTodos->fetchAll(),
+            'goals' => $upGoals->fetchAll(),
+        ],
         'owner_name'  => (string) (get_setting($uid, 'owner_name', '') ?: (current_user()['display_name'] ?? '')),
         'currency'    => default_currency($uid),
         'ai_enabled'  => (get_setting($uid, 'ai_enabled', '0') === '1'),

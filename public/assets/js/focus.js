@@ -14,8 +14,8 @@
  * Nothing is written to the server until you finish, let it run out, or stop,
  * "Discard" abandons a session, which previously was impossible.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, fmtDate, timeAgo, emptyState, toast, localDateTime, onAction, confirmDialog, } from './ui.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, fmtDate, timeAgo, emptyState, toast, localDateTime, onAction, confirmDialog, } from './ui.js?v=a03b746989';
 const STORE_KEY = 'inphub.focus.timer';
 const PRESETS = [25, 50, 15, 5];
 let state = fresh(25 * 60);
@@ -74,7 +74,6 @@ export async function renderFocus(container) {
     if (state.startedAt === null && state.elapsed === 0 && !running())
         restore();
     container.innerHTML = `
-    <div class="view-head"><h2>Focus</h2></div>
     <div class="grid grid-2">
       <section class="card">
         <div class="timer-display" data-role="display">${clock(remainingSecs())}</div>

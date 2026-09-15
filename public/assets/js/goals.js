@@ -1,17 +1,17 @@
 /**
  * inphub: goals: progress bars with +/- nudges, status, target dates.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, confetti, todayStr, loadingState, } from './ui.js?v=ef9086612c';
-import { currentParams } from './app.js?v=ef9086612c';
-import { opts } from './todos.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, confetti, todayStr, loadingState, } from './ui.js?v=a03b746989';
+import { currentParams } from './app.js?v=a03b746989';
+import { opts } from './todos.js?v=a03b746989';
 const STATUSES = ['active', 'completed', 'paused'];
 /** Hide finished goals, the server sorts completed above paused, so without
  *  this they pile up at the top of the grid forever. */
 let hideCompleted = false;
 export async function renderGoals(container) {
     container.innerHTML = `
-    <div class="view-head"><h2>Goals</h2>
+    <div class="view-head">
       <div class="toolbar">
         <label class="checkbox" style="margin:0"><input type="checkbox" data-role="hide-done">
           <span>Hide completed</span></label>

@@ -282,6 +282,22 @@ function brief_context(int $uid, bool $withIds = false): string
     }
 
     if ($withIds) {
+        // The rest of the open tasks, so "complete the Ali task" can be checked
+        // against every task it might mean, not only the ones due today.
+        $o = $pdo->prepare("SELECT id, title, priority, due_date FROM todos
+            WHERE user_id=? AND status IN ('todo','in_progress') AND due_date > CURRENT_DATE
+            ORDER BY due_date ASC, id DESC LIMIT 25");
+        $o->execute([$uid]);
+        $other = $o->fetchAll();
+        if ($other) {
+            $lines[] = "\nOther open tasks (due later):";
+            foreach ($other as $row) {
+                $lines[] = "- [id {$row['id']}] {$row['title']} [{$row['priority']}] due {$row['due_date']}";
+            }
+        }
+    }
+
+    if ($withIds) {
         // Chat needs every active habit (with its id), not just the unlogged
         // ones: "log my reading habit" must resolve even when it is already done.
         $h = $pdo->prepare("SELECT h.id, h.name,
@@ -376,13 +392,16 @@ function brief_context(int $uid, bool $withIds = false): string
             }
         }
 
+        // Ordered by id, i.e. by when they were ADDED. Ordering by spent_at let
+        // post-dated rows (next week's rent) push the entry the user just made
+        // out of the list, and the model then guessed its id.
         $e = $pdo->prepare('SELECT e.id, e.type, e.amount, e.currency, e.spent_at, e.description, c.name AS category
                             FROM expenses e LEFT JOIN expense_categories c ON c.id = e.category_id AND c.user_id = e.user_id
-                            WHERE e.user_id=? ORDER BY e.spent_at DESC, e.id DESC LIMIT 8');
+                            WHERE e.user_id=? ORDER BY e.id DESC LIMIT 10');
         $e->execute([$uid]);
         $recent = $e->fetchAll();
         if ($recent) {
-            $lines[] = "\nMost recent money entries (newest first):";
+            $lines[] = "\nMost recently added money entries (newest first):";
             foreach ($recent as $row) {
                 $lines[] = "- [id {$row['id']}] {$row['spent_at']} "
                     . ($row['type'] === 'income' ? 'income ' : 'expense ')
@@ -421,30 +440,107 @@ function chat_turn(int $uid, string $message, ?string $model = null, ?string $se
     }
     $reply   = ai_generate($uid, $system, $history, $opts);
 
-    // Parse an optional trailing ```json { "actions": [...] } ``` block.
     [$clean, $actions] = split_actions($reply);
-    $executed = [];
-    foreach ($actions as $a) {
-        $tool = $a['tool'] ?? $a['action'] ?? $a['name'] ?? null;
-        $args = $a['args'] ?? $a['arguments'] ?? $a['parameters'] ?? $a;
-        if (!is_string($tool) || !in_array($tool, CHAT_ACTIONS, true)) {
-            $label = is_string($tool) ? $tool : '(missing tool name)';
-            $executed[] = ['tool' => $label, 'error' => "Unknown action \"{$label}\" — not executed."];
-            continue;
-        }
+    $executed = run_chat_actions($uid, $actions);
+
+    // Same-turn repair. The prose above was written before anything ran, so a
+    // failed action left a reply claiming "Logged it!" next to an error. One
+    // more call shows the model what happened; it either fixes the arguments
+    // or asks the user, and its prose replaces the wrong claim. One round only.
+    $failed = array_values(array_filter($executed, static fn (array $a): bool => isset($a['error'])));
+    if ($failed) {
+        $ok = array_values(array_filter($executed, static fn (array $a): bool => !isset($a['error'])));
         try {
-            $executed[] = ['tool' => $tool, 'summary' => execute_chat_action($uid, $tool, is_array($args) ? $args : [])];
-        } catch (ChatActionError $e) {
-            // A described failure: the user sees why, and so does the model on
-            // the next turn (recent_chat_text replays it).
-            $executed[] = ['tool' => $tool, 'error' => $e->getMessage()];
+            $repairPrompt = $history . ' ' . $reply . "\n\n"
+                . action_results_line($executed) . "\n\n"
+                . "(system: Some of those actions FAILED, so your reply above is wrong about them. "
+                . "Write your reply to the user again, from scratch. If the snapshot or a result above lets you fix "
+                . "the arguments, include a corrected json block containing ONLY the failed actions. If it is not clear "
+                . "which item the user means, or it does not exist, do not write a block: ask one short question and "
+                . "list the options by name. Never say something was done unless its result says OK.)\n\nAssistant:";
+            $repairReply = ai_generate($uid, $system, $repairPrompt, $opts);
+            [$repairClean, $repairActions] = split_actions($repairReply);
+
+            // Only tools that failed may run again, so an add_expense that
+            // already succeeded cannot be duplicated by an over-eager repair.
+            $retryable = array_column($failed, 'tool');
+            $repairActions = array_values(array_filter($repairActions, static function (array $a) use ($retryable): bool {
+                $tool = $a['tool'] ?? $a['action'] ?? $a['name'] ?? null;
+                return is_string($tool) && in_array($tool, $retryable, true);
+            }));
+            $repaired = run_chat_actions($uid, $repairActions);
+
+            $clean = $repairClean;
+            // With no retry, keep the original failures: they explain why the
+            // model is now asking. With a retry, its own results supersede them.
+            $executed = array_merge($ok, $repaired ?: $failed);
         } catch (Throwable $e) {
-            $executed[] = ['tool' => $tool, 'error' => "Could not apply \"{$tool}\": " . $e->getMessage()];
+            // The repair is a best-effort extra; the first-pass results stand.
         }
     }
 
     save_chat($uid, $sid, 'assistant', $clean, $executed ?: null);
-    return ['reply' => $clean, 'actions' => $executed, 'session_id' => $sid];
+    // ref/args stay server-side; the client shows summary and error only.
+    $public = array_map(static fn (array $a): array => array_intersect_key($a, array_flip(['tool', 'summary', 'error'])), $executed);
+    return ['reply' => $clean, 'actions' => $public, 'session_id' => $sid];
+}
+
+/**
+ * Execute parsed chat actions against the CHAT_ACTIONS whitelist.
+ *
+ * Each result is {tool, summary, ref} on success or {tool, error, args} on
+ * failure. The args a failed call carried are kept so the next turn can show
+ * the model exactly what it sent ("you sent {"habit_name":"Stretch"}").
+ */
+function run_chat_actions(int $uid, array $actions): array
+{
+    $executed = [];
+    foreach ($actions as $a) {
+        $tool = $a['tool'] ?? $a['action'] ?? $a['name'] ?? null;
+        $args = $a['args'] ?? $a['arguments'] ?? $a['parameters'] ?? $a;
+        $args = is_array($args) ? $args : [];
+        if (!is_string($tool) || !in_array($tool, CHAT_ACTIONS, true)) {
+            $label = is_string($tool) ? $tool : '(missing tool name)';
+            $executed[] = ['tool' => $label, 'error' => "Unknown action \"{$label}\" — not executed.", 'args' => $args];
+            continue;
+        }
+        try {
+            $executed[] = ['tool' => $tool] + execute_chat_action($uid, $tool, $args);
+        } catch (ChatActionError $e) {
+            // A described failure: the user sees why, and so does the model on
+            // the next turn (recent_chat_text replays it).
+            $executed[] = ['tool' => $tool, 'error' => $e->getMessage(), 'args' => $args];
+        } catch (Throwable $e) {
+            $executed[] = ['tool' => $tool, 'error' => "Could not apply \"{$tool}\": " . $e->getMessage(), 'args' => $args];
+        }
+    }
+    return $executed;
+}
+
+/**
+ * One "(system: result of those actions …)" line for the transcript. Successes
+ * carry the id of the row they touched, failures the arguments that were sent,
+ * because those two facts are what the model needs to get the next call right.
+ */
+function action_results_line(array $executed): string
+{
+    $notes = [];
+    foreach ($executed as $a) {
+        if (!is_array($a)) {
+            continue;
+        }
+        $tool = (string) ($a['tool'] ?? 'action');
+        if (isset($a['error'])) {
+            $sent = isset($a['args']) && is_array($a['args'])
+                ? ' (you sent ' . mb_substr((string) json_encode($a['args'], JSON_UNESCAPED_UNICODE), 0, 200) . ')'
+                : '';
+            $notes[] = "{$tool} FAILED{$sent}: {$a['error']}";
+        } else {
+            $ref = isset($a['ref']['kind'], $a['ref']['id']) ? " [{$a['ref']['kind']} id {$a['ref']['id']}]" : '';
+            $notes[] = "{$tool} OK{$ref}: " . (string) ($a['summary'] ?? 'done');
+        }
+    }
+    return $notes ? '(system: result of those actions — ' . implode(' | ', $notes) . ')' : '';
 }
 
 /**
@@ -550,10 +646,19 @@ RULES — follow them exactly:
 5. "actions" is always a list, even for a single change. To make several
    changes at once, put several objects in the same list.
 6. Use the tool names below spelled exactly. Do not invent new ones.
-7. Every id must be copied from the snapshot above. If what the user means is
-   not in the snapshot, say so and ask which one they mean — never guess an id
-   and never make one up.
-8. If the user is only chatting or asking a question, write NO block at all.
+7. Every id must be copied from the snapshot above, or from a "(system: result
+   of those actions …)" line in the conversation: "[expense id 395]" there is
+   the id of the row that action created or changed. If what the user means is
+   in neither place, say so and ask — never guess an id and never make one up.
+8. Each change must point at exactly ONE item. If the user's words could fit
+   more than one item (they said "the Ali task" and the snapshot has both
+   "Email Ali" and "Email Ali about rent"), do NOT write a block and do NOT
+   pick one yourself. Ask which one they mean, naming the options.
+9. Identify an item with "id" (best) or its exact name under "name" or "title".
+   Use no other key for that — not "habit_name", "task", or "item".
+10. If the user is only chatting or asking a question, write NO block at all.
+11. Say what you are doing ("Logging it now."). The app shows the user whether
+    it worked, so never add details the result might contradict.
 
 TOOLS
 
@@ -619,42 +724,76 @@ Repositories
 EXAMPLES
 
 User: remind me to call the dentist tomorrow
-Assistant: Added it for tomorrow.
+Assistant: Adding it for tomorrow.
 ```json
 {"actions": [{"tool": "add_todo", "args": {"title": "Call the dentist", "due_date": "{$tomorrow}"}}]}
 ```
 
 User: i finished the taxes task
 (the snapshot shows: - [id 12] Do the taxes [high])
-Assistant: Nice one — marked it done.
+Assistant: Nice one — marking it done.
 ```json
 {"actions": [{"tool": "complete_todo", "args": {"id": 12}}]}
 ```
 
 User: spent 250 on coffee today, and i did my reading
 (the snapshot shows: - [id 3] Read — not yet done today)
-Assistant: Logged the coffee and ticked off your reading.
+Assistant: Logging the coffee and ticking off your reading.
 ```json
 {"actions": [{"tool": "add_expense", "args": {"amount": 250, "description": "Coffee"}}, {"tool": "log_habit", "args": {"id": 3}}]}
 ```
 
 User: i read for 20 minutes and pausing the gym goal for now
 (the snapshot shows: - [id 3] Read — not yet done today, and - [id 2] Gym 3x a week)
-Assistant: Logged your reading and paused the gym goal.
+Assistant: Logging your reading and pausing the gym goal.
 ```json
 {"actions": [{"tool": "log_habit", "args": {"id": 3}}, {"tool": "set_goal_status", "args": {"id": 2, "status": "paused"}}]}
 ```
 
 User: that coffee was actually 180 not 250
 (the snapshot shows: - [id 91] {$today} expense 250.00 {$currency} — Coffee)
-Assistant: Fixed it to 180.
+Assistant: Fixing it to 180.
 ```json
 {"actions": [{"tool": "update_expense", "args": {"id": 91, "amount": 180}}]}
 ```
 
+User: i spent 350 on groceries
+Assistant: Logging 350 for groceries.
+```json
+{"actions": [{"tool": "add_expense", "args": {"amount": 350, "description": "Groceries", "category": "Food & Drink"}}]}
+```
+(system: result of those actions — add_expense OK [expense id 412]: Logged expense 350.00 {$currency})
+User: change that to 380
+Assistant: Changing it to 380.
+```json
+{"actions": [{"tool": "update_expense", "args": {"id": 412, "amount": 380}}]}
+```
+
+User: i did yoga today
+(the snapshot shows: - [id 9] Yoga — not yet done today)
+Assistant: Logging yoga for today.
+```json
+{"actions": [{"tool": "log_habit", "args": {"id": 9}}]}
+```
+(system: result of those actions — log_habit OK [habit id 9]: Logged habit “Yoga”)
+User: actually undo that, i didn't
+Assistant: Removing today's yoga log.
+```json
+{"actions": [{"tool": "unlog_habit", "args": {"id": 9}}]}
+```
+
+User: complete the Ali task
+(the snapshot shows: - [id 27] Email Ali [medium], and - [id 28] Email Ali about rent [high])
+Assistant: You have two tasks about Ali: "Email Ali" and "Email Ali about rent". Which one should I complete?
+User: the rent one
+Assistant: Completing "Email Ali about rent".
+```json
+{"actions": [{"tool": "complete_todo", "args": {"id": 28}}]}
+```
+
 User: add to my cubing note that the springs help
 (the snapshot shows: - [id 7] Cube setup)
-Assistant: Added that to the note.
+Assistant: Adding that to the note.
 ```json
 {"actions": [{"tool": "update_note", "args": {"id": 7, "content": "Lighter springs help.", "append": true}}]}
 ```
@@ -662,9 +801,9 @@ Assistant: Added that to the note.
 User: how much did i spend this week?
 Assistant: (answers from the snapshot, with no JSON block at all)
 
-If an action fails, the app tells you why on the next turn. Read that reason,
-fix the arguments (usually an id) and try once more, or ask the user which item
-they meant. Do not silently repeat the same failing call.
+If an action fails, the app tells you why, including what you sent. Read that
+reason, fix the arguments (usually the id) and try once more, or ask the user
+which item they meant. Do not silently repeat the same failing call.
 
 Keep the conversational part short and friendly.
 TXT;
@@ -690,18 +829,9 @@ function recent_chat_text(int $uid, string $sid): string
         // it only ever saw its own optimistic wording.
         $acts = $r['actions'] ? json_decode((string) $r['actions'], true) : null;
         if (is_array($acts) && $acts) {
-            $notes = [];
-            foreach ($acts as $a) {
-                if (!is_array($a)) {
-                    continue;
-                }
-                $tool = (string) ($a['tool'] ?? 'action');
-                $notes[] = isset($a['error'])
-                    ? "{$tool} FAILED: {$a['error']}"
-                    : "{$tool} OK: " . (string) ($a['summary'] ?? 'done');
-            }
-            if ($notes) {
-                $out[] = '(system: result of those actions — ' . implode(' | ', $notes) . ')';
+            $line = action_results_line($acts);
+            if ($line !== '') {
+                $out[] = $line;
             }
         }
     }
@@ -734,8 +864,12 @@ function split_actions(string $reply): array
     // user's request AND left the raw JSON in the visible reply.
     if (preg_match_all('/```[A-Za-z0-9_+-]*[ \t]*\r?\n?(.*?)```/s', $reply, $mm, PREG_SET_ORDER)) {
         foreach ($mm as $m) {
-            $found = normalise_chat_actions(json_decode(trim($m[1]), true));
-            if ($found) {
+            $decoded = json_decode(trim($m[1]), true);
+            $found   = normalise_chat_actions($decoded);
+            // An empty {"actions": []} is still the action block (models add it
+            // when they ask a question instead); it must not show up as text.
+            $emptyBlock = is_array($decoded) && (($decoded['actions'] ?? null) === [] || $decoded === []);
+            if ($found || $emptyBlock) {
                 $actions = array_merge($actions, $found);
                 $clean   = str_replace($m[0], '', $clean);
             }
@@ -746,8 +880,9 @@ function split_actions(string $reply): array
     if (!$actions) {
         $raw = extract_balanced_json($reply);
         if ($raw !== null) {
-            $found = normalise_chat_actions(json_decode($raw, true));
-            if ($found) {
+            $decoded = json_decode($raw, true);
+            $found   = normalise_chat_actions($decoded);
+            if ($found || (is_array($decoded) && ($decoded['actions'] ?? null) === [])) {
                 $actions = $found;
                 $clean   = str_replace($raw, '', $clean);
             }
@@ -844,11 +979,15 @@ function fail_action(string $message): void
 /**
  * Find the row the model meant, by id OR by name.
  *
- * Small models frequently send {"name":"Read"} instead of {"id":3} even when
- * the prompt says otherwise, so accepting both is the difference between the
- * tool working and the turn being wasted. An ambiguous name lists the
- * candidates with their ids, which is something the model can actually use on
- * the next turn.
+ * Small models frequently send {"name":"Read"} instead of {"id":3}, and spell
+ * the key however they like ("habit_name", "task"), so accepting those is the
+ * difference between the tool working and the turn being wasted.
+ *
+ * A name must pick out exactly one row. An exact title that is ALSO contained
+ * in other titles ("Email Ali" next to "Email Ali about rent") counts as
+ * ambiguous: the model picked one of several things the user might have
+ * meant, so it fails with every candidate and its id, and the model asks.
+ * An explicit id always skips that check.
  */
 function chat_resolve(int $uid, string $kind, array $args): array
 {
@@ -862,54 +1001,69 @@ function chat_resolve(int $uid, string $kind, array $args): array
     $label = $meta['label'];
     $pdo   = db();
 
+    $byId = static function (int $id) use ($pdo, $table, $uid, $label): array {
+        $st = $pdo->prepare("SELECT * FROM `{$table}` WHERE id=? AND user_id=? LIMIT 1");
+        $st->execute([$id, $uid]);
+        $row = $st->fetch();
+        if (!$row) {
+            fail_action("There is no {$label} with id {$id}. Use an id shown in the snapshot or in an earlier result, or give the name instead.");
+        }
+        return $row;
+    };
+
     // An explicit id always wins.
-    foreach (['id', $kind . '_id'] as $key) {
-        if (isset($args[$key]) && (int) $args[$key] > 0) {
-            $id  = (int) $args[$key];
-            $st  = $pdo->prepare("SELECT * FROM `{$table}` WHERE id=? AND user_id=? LIMIT 1");
-            $st->execute([$id, $uid]);
-            $row = $st->fetch();
-            if ($row) {
-                return $row;
-            }
-            fail_action("There is no {$label} with id {$id}. Use an id shown in the snapshot, or give the name instead.");
+    foreach (['id', $kind . '_id', $kind === 'todo' ? 'task_id' : $kind . '_id'] as $key) {
+        if (isset($args[$key]) && is_numeric($args[$key]) && (int) $args[$key] > 0) {
+            return $byId((int) $args[$key]);
         }
     }
 
-    // Otherwise fall back to a name/title.
+    // Otherwise a name. Entity-specific keys first: for add_repo_suggestion
+    // "title" is the suggestion's title, not the repository's name.
+    $keys = [$kind . '_name', $kind . '_title', $kind, 'name', 'title', 'description', 'query', 'label', 'text'];
+    if ($kind === 'todo') {
+        array_unshift($keys, 'task', 'task_title', 'task_name');
+    }
     $needle = null;
-    foreach (['name', 'title', 'description', $kind, 'query'] as $key) {
-        if (isset($args[$key]) && trim((string) $args[$key]) !== '') {
+    foreach ($keys as $key) {
+        if (isset($args[$key]) && is_scalar($args[$key]) && trim((string) $args[$key]) !== '') {
             $needle = trim((string) $args[$key]);
             break;
         }
     }
     if ($needle === null) {
-        fail_action("Which {$label} do you mean? Give its id from the snapshot, or its exact name.");
+        fail_action("Which {$label} do you mean? Put its id from the snapshot under \"id\" (or its exact name under \"name\").");
+    }
+    if (ctype_digit($needle)) {
+        return $byId((int) $needle); // {"name": "7"}
     }
 
-    // Exact match first, then a contains-match.
+    $like = '%' . strtr($needle, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
     $st = $pdo->prepare("SELECT * FROM `{$table}` WHERE user_id=? AND `{$col}`=?{$scope} ORDER BY id DESC LIMIT 6");
     $st->execute([$uid, $needle]);
-    $rows = $st->fetchAll();
-    if (!$rows) {
-        $st = $pdo->prepare("SELECT * FROM `{$table}` WHERE user_id=? AND `{$col}` LIKE ?{$scope} ORDER BY id DESC LIMIT 6");
-        $st->execute([$uid, '%' . $needle . '%']);
-        $rows = $st->fetchAll();
-    }
+    $exact = $st->fetchAll();
+    $st = $pdo->prepare("SELECT * FROM `{$table}` WHERE user_id=? AND `{$col}` LIKE ? ESCAPE '!'{$scope} ORDER BY id DESC LIMIT 6");
+    $st->execute([$uid, $like]);
+    $contains = $st->fetchAll();
 
-    if (count($rows) === 1) {
-        return $rows[0];
+    // Categories are exempt from the ambiguity rule: "Food" meaning the Food
+    // category next to "Food & Drink" is a filing choice, not a wrong row.
+    if (count($exact) === 1 && ($kind === 'category' || count($contains) <= 1)) {
+        return $exact[0];
     }
-    if (!$rows) {
+    if (!$exact && count($contains) === 1) {
+        return $contains[0];
+    }
+    if (!$exact && !$contains) {
         fail_action("No {$label} matching \"{$needle}\" was found. Check the snapshot for the exact name.");
     }
+
     $options = [];
-    foreach ($rows as $row) {
+    foreach ($contains ?: $exact as $row) {
         $options[] = '[id ' . $row['id'] . '] ' . (string) $row[$col];
     }
-    fail_action(count($rows) . " {$label}s match \"{$needle}\": " . implode(', ', $options)
-        . '. Ask which one is meant, then use its id.');
+    fail_action(count($options) . " {$label}s match \"{$needle}\": " . implode(', ', $options)
+        . '. Nothing was changed. Ask the user which one they mean, then use its id.');
 }
 
 /**
@@ -968,14 +1122,24 @@ function chat_amount(array $args, string $key = 'amount'): float
 }
 
 /**
+ * A successful action's result: the summary the user sees, plus which row it
+ * touched. The ref never reaches the user; recent_chat_text() replays it as
+ * "[expense id 395]" so a follow-up like "change that to 380" has a real id.
+ */
+function action_done(string $summary, ?string $kind = null, ?int $id = null): array
+{
+    return ['summary' => $summary, 'ref' => $kind !== null && $id ? ['kind' => $kind, 'id' => $id] : null];
+}
+
+/**
  * Apply one whitelisted chat action.
  *
- * Returns a short human summary on success. On failure it throws
+ * Returns action_done() on success. On failure it throws
  * ChatActionError with a reason, chat_turn() surfaces that to the user and
  * feeds it back into the transcript so the model can correct itself next turn.
  * Every write logs an activity_log row with actor='ai'.
  */
-function execute_chat_action(int $uid, string $tool, array $args): string
+function execute_chat_action(int $uid, string $tool, array $args): array
 {
     $pdo = db();
     $prio = ['low', 'medium', 'high', 'urgent'];
@@ -999,18 +1163,18 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             ]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'todo.created', 'todo', $id, 'Added todo: ' . $title, 'ai');
-            return 'Added todo “' . $title . '”';
+            return action_done('Added todo “' . $title . '”', 'task', $id);
         }
 
         case 'complete_todo': {
             $todo = chat_resolve($uid, 'todo', $args);
             if ($todo['status'] === 'done') {
-                return 'Task “' . $todo['title'] . '” was already done';
+                return action_done('Task “' . $todo['title'] . '” was already done', 'task', (int) $todo['id']);
             }
             $pdo->prepare("UPDATE todos SET status='done', completed_at=NOW() WHERE id=? AND user_id=?")
                 ->execute([(int) $todo['id'], $uid]);
             log_activity($uid, 'todo.completed', 'todo', (int) $todo['id'], 'Completed: ' . $todo['title'], 'ai');
-            return 'Completed “' . $todo['title'] . '”';
+            return action_done('Completed “' . $todo['title'] . '”', 'task', (int) $todo['id']);
         }
 
         case 'update_todo': {
@@ -1034,7 +1198,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
                 $fields['due_date'], $fields['status'], $done ? 1 : 0, (int) $todo['id'], $uid,
             ]);
             log_activity($uid, 'todo.updated', 'todo', (int) $todo['id'], 'Updated todo: ' . $fields['title'], 'ai');
-            return 'Updated “' . $fields['title'] . '”';
+            return action_done('Updated “' . $fields['title'] . '”', 'task', (int) $todo['id']);
         }
 
         /* ----------------------------------------------------------- habits */
@@ -1054,7 +1218,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             ]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'habit.created', 'habit', $id, 'Added habit: ' . $name, 'ai');
-            return 'Added habit “' . $name . '”';
+            return action_done('Added habit “' . $name . '”', 'habit', $id);
         }
 
         case 'log_habit': {
@@ -1063,12 +1227,12 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             $exists = $pdo->prepare('SELECT id FROM habit_logs WHERE habit_id=? AND logged_date=?');
             $exists->execute([(int) $habit['id'], $date]);
             if ($exists->fetchColumn() !== false) {
-                return 'Habit “' . $habit['name'] . '” was already logged for ' . $date;
+                return action_done('Habit “' . $habit['name'] . '” was already logged for ' . $date, 'habit', (int) $habit['id']);
             }
             $pdo->prepare('INSERT INTO habit_logs (user_id, habit_id, logged_date, count) VALUES (?, ?, ?, 1)')
                 ->execute([$uid, (int) $habit['id'], $date]);
             log_activity($uid, 'habit.logged', 'habit', (int) $habit['id'], 'Logged habit: ' . $habit['name'], 'ai');
-            return 'Logged habit “' . $habit['name'] . '”' . ($date === today() ? '' : ' for ' . $date);
+            return action_done('Logged habit “' . $habit['name'] . '”' . ($date === today() ? '' : ' for ' . $date), 'habit', (int) $habit['id']);
         }
 
         case 'unlog_habit': {
@@ -1077,10 +1241,10 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             $del = $pdo->prepare('DELETE FROM habit_logs WHERE user_id=? AND habit_id=? AND logged_date=?');
             $del->execute([$uid, (int) $habit['id'], $date]);
             if ($del->rowCount() === 0) {
-                return 'Habit “' . $habit['name'] . '” was not logged for ' . $date . ', so nothing changed';
+                return action_done('Habit “' . $habit['name'] . '” was not logged for ' . $date . ', so nothing changed', 'habit', (int) $habit['id']);
             }
             log_activity($uid, 'habit.unlogged', 'habit', (int) $habit['id'], 'Removed habit log: ' . $habit['name'], 'ai');
-            return 'Removed the log for “' . $habit['name'] . '” on ' . $date;
+            return action_done('Removed the log for “' . $habit['name'] . '” on ' . $date, 'habit', (int) $habit['id']);
         }
 
         /* ------------------------------------------------------------ goals */
@@ -1101,7 +1265,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             ]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'goal.created', 'goal', $id, 'Added goal: ' . $title, 'ai');
-            return 'Added goal “' . $title . '”';
+            return action_done('Added goal “' . $title . '”', 'goal', $id);
         }
 
         case 'update_goal_progress': {
@@ -1118,8 +1282,8 @@ function execute_chat_action(int $uid, string $tool, array $args): string
                 ->execute([$newValue, $status, (int) $goal['id'], $uid]);
             log_activity($uid, 'goal.progress', 'goal', (int) $goal['id'], $goal['title'] . ' → ' . $newValue, 'ai');
             $suffix = $goal['target_value'] !== null ? '/' . (int) $goal['target_value'] : '';
-            return 'Goal “' . $goal['title'] . '” is now at ' . $newValue . $suffix
-                . ($status === 'completed' && $goal['status'] !== 'completed' ? ' — completed!' : '');
+            return action_done('Goal “' . $goal['title'] . '” is now at ' . $newValue . $suffix
+                . ($status === 'completed' && $goal['status'] !== 'completed' ? ' — completed!' : ''), 'goal', (int) $goal['id']);
         }
 
         case 'set_goal_status': {
@@ -1131,7 +1295,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             $pdo->prepare('UPDATE goals SET status=? WHERE id=? AND user_id=?')
                 ->execute([$status, (int) $goal['id'], $uid]);
             log_activity($uid, 'goal.status', 'goal', (int) $goal['id'], $goal['title'] . ' → ' . $status, 'ai');
-            return 'Goal “' . $goal['title'] . '” is now ' . $status;
+            return action_done('Goal “' . $goal['title'] . '” is now ' . $status, 'goal', (int) $goal['id']);
         }
 
         /* ------------------------------------------------------------ notes */
@@ -1142,7 +1306,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             $stmt->execute([$uid, chat_opt_text($args, 'title'), $content, chat_opt_text($args, 'tags')]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'note.created', 'note', $id, 'New note', 'ai');
-            return 'Saved a note';
+            return action_done('Saved a note', 'note', $id);
         }
 
         case 'update_note': {
@@ -1162,7 +1326,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
                 (int) $note['id'], $uid,
             ]);
             log_activity($uid, 'note.updated', 'note', (int) $note['id'], $append ? 'Appended to a note' : 'Updated a note', 'ai');
-            return $append ? 'Added to that note' : 'Updated that note';
+            return action_done($append ? 'Added to that note' : 'Updated that note', 'note', (int) $note['id']);
         }
 
         /* ------------------------------------------------------------ money */
@@ -1189,7 +1353,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             ]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'expense.created', 'expense', $id, ($type === 'income' ? 'Income ' : 'Spent ') . money_text($amount, $currency), 'ai');
-            return ($type === 'income' ? 'Logged income ' : 'Logged expense ') . money_text($amount, $currency);
+            return action_done(($type === 'income' ? 'Logged income ' : 'Logged expense ') . money_text($amount, $currency), 'expense', $id);
         }
 
         case 'update_expense': {
@@ -1213,7 +1377,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
                 (int) $exp['id'], $uid,
             ]);
             log_activity($uid, 'expense.updated', 'expense', (int) $exp['id'], 'Updated entry to ' . money_text($amount, $currency), 'ai');
-            return 'Updated that entry to ' . money_text($amount, $currency);
+            return action_done('Updated that entry to ' . money_text($amount, $currency), 'expense', (int) $exp['id']);
         }
 
         case 'delete_expense': {
@@ -1225,7 +1389,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             $pdo->prepare('DELETE FROM expenses WHERE id=? AND user_id=?')->execute([(int) $exp['id'], $uid]);
             $what = money_text((float) $exp['amount'], (string) ($exp['currency'] ?: default_currency($uid)));
             log_activity($uid, 'expense.deleted', 'expense', (int) $exp['id'], 'Deleted entry of ' . $what, 'ai');
-            return 'Deleted that entry (' . $what . ')';
+            return action_done('Deleted that entry (' . $what . ')', 'expense', (int) $exp['id']);
         }
 
         /* ------------------------------------------------------------ repos */
@@ -1245,7 +1409,7 @@ function execute_chat_action(int $uid, string $tool, array $args): string
             ]);
             $id = (int) $pdo->lastInsertId();
             log_activity($uid, 'repo.suggestion', 'repo', (int) $repo['id'], 'Suggestion for ' . $repo['name'] . ': ' . $title, 'ai');
-            return 'Added a suggestion to ' . $repo['name'];
+            return action_done('Added a suggestion to ' . $repo['name'], 'repository', (int) $repo['id']);
         }
     }
 

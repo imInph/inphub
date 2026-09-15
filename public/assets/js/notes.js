@@ -1,14 +1,14 @@
 /**
  * inphub: notes: capture, pin, tag, search, markdown-rendered preview.
  */
-import { apiGet, apiPost } from './api.js?v=ef9086612c';
-import { escapeHtml, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, loadingState, } from './ui.js?v=ef9086612c';
-import { currentParams } from './app.js?v=ef9086612c';
+import { apiGet, apiPost } from './api.js?v=a03b746989';
+import { escapeHtml, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, loadingState, toggleMarkdownTask, } from './ui.js?v=a03b746989';
+import { currentParams } from './app.js?v=a03b746989';
 let query = '';
 let searchTimer = 0;
 export async function renderNotes(container) {
     container.innerHTML = `
-    <div class="view-head"><h2>Notes</h2>
+    <div class="view-head">
       <div class="toolbar">
         <input type="search" data-role="search" placeholder="Search notes…" style="width:220px" value="${escapeHtml(query)}">
         <button class="btn btn-primary" data-action="new">+ Note</button>
@@ -32,7 +32,11 @@ export async function renderNotes(container) {
         if (action === 'pin')
             pin(container, id);
         if (action === 'read')
-            openReader(cache.find((n) => n.id === id) ?? null);
+            openReader(container, cache.find((n) => n.id === id) ?? null);
+        if (action === 'md-task') {
+            const card = el.closest('[data-row]');
+            void toggleTask(container, card, Number(card?.dataset.row), el);
+        }
         if (action === 'tag') {
             // Tag chips were rendered but inert, no way to see "notes tagged dev".
             query = el.dataset.tag ?? '';
@@ -70,18 +74,55 @@ async function load(container) {
     }
 }
 /** Read a note in full, the card clips at 220px and editing was the only way in. */
-function openReader(n) {
+function openReader(container, n) {
     if (!n)
         return;
-    openModal({
+    const root = openModal({
         title: n.title || 'Untitled',
         confirmLabel: 'Close',
         cancelLabel: '',
-        bodyHtml: `<div class="md" style="max-height:60vh;overflow:auto">${markdown(n.content)}</div>
+        size: 'lg', // room for embedded players and tables
+        bodyHtml: `<div class="md" style="max-height:60vh;overflow:auto">${markdown(n.content, { tasks: true })}</div>
       <div class="text-dim" style="margin-top:10px;font-size:.8rem">
         ${escapeHtml((n.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => '#' + t).join(' '))}
         · updated ${escapeHtml(timeAgo(n.updated_at))}</div>`,
     });
+    // The modal is a fresh node per open, so a direct listener cannot stack.
+    root.addEventListener('click', (e) => {
+        const box = e.target.closest('input[data-action="md-task"]');
+        if (box)
+            void toggleTask(container, root.querySelector('.md'), n.id, box);
+    });
+}
+/**
+ * Tick a task-list checkbox and save the note. The checkbox has already
+ * flipped by the time the click lands, so every failure path flips it back.
+ */
+async function toggleTask(container, scope, id, box) {
+    const n = cache.find((x) => x.id === id);
+    const rendered = scope ? scope.querySelectorAll('input[data-task-index]').length : 0;
+    const next = n ? toggleMarkdownTask(n.content, Number(box.dataset.taskIndex), rendered) : null;
+    if (!n || next === null) {
+        box.checked = !box.checked;
+        toast('Could not find that task in the note, open it with Edit instead.', 'bad');
+        return;
+    }
+    box.disabled = true;
+    try {
+        await apiPost('notes', 'update', { id, content: next });
+        n.content = next;
+        // Keep the card in sync when the tick came from the reader (and vice versa).
+        const card = container.querySelector(`[data-row="${id}"] .md`);
+        if (card && card !== scope)
+            card.innerHTML = markdown(next, { embeds: false, tasks: true });
+    }
+    catch (e) {
+        box.checked = !box.checked;
+        toast(e instanceof Error ? e.message : 'Could not save the note', 'bad');
+    }
+    finally {
+        box.disabled = false;
+    }
 }
 function card(n) {
     const tags = (n.tags ?? '').split(',').map((t) => t.trim()).filter(Boolean);
@@ -94,7 +135,7 @@ function card(n) {
         <button class="btn btn-ghost btn-sm" data-action="delete" data-id="${n.id}">✕</button>
       </span>
     </div>
-    <div class="md" style="max-height:220px;overflow:auto">${markdown(n.content)}</div>
+    <div class="md" style="max-height:220px;overflow:auto">${markdown(n.content, { embeds: false, tasks: true })}</div>
     <div class="repo-meta" style="margin-top:8px">
       ${tags.map((t) => `<button class="chip" data-action="tag" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`).join('')}
       <span class="text-dim">${escapeHtml(timeAgo(n.updated_at))}</span>

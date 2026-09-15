@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 /** App version, bump on release. Shown in the sidebar, login page, and export dumps. */
-const INPHUB_VERSION = '2.1.2';
+const INPHUB_VERSION = '3.0.0';
 
 /**
  * Read a value from config/config.php (the gitignored, per-machine config).
@@ -322,4 +322,119 @@ function money_window(array $input, string $default = 'month'): array
     }
 
     return array_merge(['period' => $default], money_period_range($default));
+}
+
+/* ------------------------------------------------------ dashboard + look */
+
+/**
+ * Every dashboard widget, id => default size, in the default order.
+ *
+ * The frontend registry (src/widgets.ts, WIDGETS) must list exactly these ids:
+ * the server drops anything it does not know, so a widget added only in TS can
+ * never be saved, and one added only here renders as nothing.
+ */
+const DASHBOARD_WIDGETS = [
+    'clock'    => 'normal',
+    'capture'  => 'normal',
+    'todos'    => 'normal',
+    'upcoming' => 'normal',
+    'habits'   => 'normal',
+    'money'    => 'normal',
+    'wallet'   => 'normal',
+    'goals'    => 'normal',
+    'focus'    => 'normal',
+    'brief'    => 'wide',
+    'activity' => 'normal',
+    'repos'    => 'normal',
+];
+
+const WIDGET_SIZES = ['normal', 'wide'];
+
+/** Accent presets, the CSS defines one [data-accent] block per id. */
+const UI_ACCENTS = ['blue', 'indigo', 'purple', 'pink', 'red', 'orange', 'green', 'teal', 'graphite'];
+
+/** Wallpaper presets; 'custom' uses ui_wallpaper_url. */
+const UI_WALLPAPERS = ['aurora', 'sunset', 'ocean', 'forest', 'graphite', 'plain', 'custom'];
+
+const UI_TRANSPARENCY = ['full', 'reduced'];
+
+/**
+ * Clean a client-sent widget layout: a list of {id, size} (or a JSON string of
+ * one). Unknown ids and duplicates are dropped, sizes fall back to the widget's
+ * default. Returns null when the input is not a list at all.
+ */
+function normalise_dashboard_layout($raw): ?array
+{
+    if (is_string($raw)) {
+        $raw = json_decode($raw, true);
+    }
+    if (!is_array($raw) || ($raw !== [] && !array_is_list($raw))) {
+        return null;
+    }
+    $out  = [];
+    $seen = [];
+    foreach ($raw as $item) {
+        $id = is_array($item) ? (string) ($item['id'] ?? '') : (is_string($item) ? $item : '');
+        if (!array_key_exists($id, DASHBOARD_WIDGETS) || isset($seen[$id])) {
+            continue;
+        }
+        $size = is_array($item) ? (string) ($item['size'] ?? '') : '';
+        $out[] = ['id' => $id, 'size' => in_array($size, WIDGET_SIZES, true) ? $size : DASHBOARD_WIDGETS[$id]];
+        $seen[$id] = true;
+    }
+    return $out;
+}
+
+/** The user's widget layout, or every widget in default order when unset. */
+function dashboard_layout(int $userId): array
+{
+    $stored = get_setting($userId, 'dashboard_widgets', null);
+    $layout = $stored === null || $stored === '' ? null : normalise_dashboard_layout((string) $stored);
+    if ($layout !== null) {
+        return $layout;
+    }
+    $out = [];
+    foreach (DASHBOARD_WIDGETS as $id => $size) {
+        $out[] = ['id' => $id, 'size' => $size];
+    }
+    return $out;
+}
+
+/** True for an absolute http(s) URL, the only thing a wallpaper may point at. */
+function is_http_url(string $url): bool
+{
+    if ($url === '' || filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return false;
+    }
+    $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+    return $scheme === 'http' || $scheme === 'https';
+}
+
+/** Appearance settings with whitelisted fallbacks, for the boot payload. */
+function ui_appearance(int $userId): array
+{
+    $all   = all_settings($userId);
+    $pick  = static fn (string $key, array $allowed, string $default): string =>
+        in_array((string) ($all[$key] ?? ''), $allowed, true) ? (string) $all[$key] : $default;
+    $url   = (string) ($all['ui_wallpaper_url'] ?? '');
+
+    return [
+        'accent'        => $pick('ui_accent', UI_ACCENTS, 'blue'),
+        'wallpaper'     => $pick('ui_wallpaper', UI_WALLPAPERS, 'aurora'),
+        'wallpaper_url' => is_http_url($url) ? $url : '',
+        'transparency'  => $pick('ui_transparency', UI_TRANSPARENCY, 'full'),
+    ];
+}
+
+/**
+ * A URL made safe to sit inside CSS `url("…")`: the characters that could end
+ * the string or the url() token are percent-encoded, which keeps the URL
+ * pointing at the same resource. Escape the result again for its HTML context.
+ */
+function css_url(string $url): string
+{
+    return 'url("' . strtr($url, [
+        '\\' => '%5C', '"' => '%22', "'" => '%27', '(' => '%28', ')' => '%29',
+        ' ' => '%20', "\n" => '', "\r" => '', "\t" => '',
+    ]) . '")';
 }

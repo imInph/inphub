@@ -1,6 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#0f1117"/>
-  <rect x="4" y="4" width="56" height="56" rx="11" fill="none" stroke="#4f8cff" stroke-width="2"/>
-  <text x="32" y="42" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="30"
-        font-weight="700" text-anchor="middle" fill="#4f8cff">in</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="a" cx="0.18" cy="0.16" r="0.62"><stop offset="0" stop-color="#2f6bff"/><stop offset="1" stop-color="#2f6bff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="b" cx="0.9" cy="0.12" r="0.55"><stop offset="0" stop-color="#8b3dff"/><stop offset="1" stop-color="#8b3dff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c" cx="0.85" cy="0.92" r="0.6"><stop offset="0" stop-color="#0bb5d4"/><stop offset="1" stop-color="#0bb5d4" stop-opacity="0"/></radialGradient>
+    <radialGradient id="d" cx="0.1" cy="0.95" r="0.5"><stop offset="0" stop-color="#e0287a"/><stop offset="1" stop-color="#e0287a" stop-opacity="0"/></radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8cc2ff"/><stop offset="1" stop-color="#2f76f0"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/><stop offset="1" stop-color="#ffffff" stop-opacity="0.14"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="114" fill="#070912"/>
+  <rect width="512" height="512" rx="114" fill="url(#a)"/>
+  <rect width="512" height="512" rx="114" fill="url(#b)"/>
+  <rect width="512" height="512" rx="114" fill="url(#c)"/>
+  <rect width="512" height="512" rx="114" fill="url(#d)"/>
+  <rect x="92" y="92" width="150" height="150" rx="40" fill="url(#accent)"/>
+  <rect x="270" y="92" width="150" height="150" rx="40" fill="url(#glass)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4"/>
+  <rect x="92" y="270" width="328" height="150" rx="40" fill="url(#glass)" stroke="#ffffff" stroke-opacity="0.45" stroke-width="4"/>
 </svg>

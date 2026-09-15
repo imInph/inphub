@@ -81,7 +81,6 @@ function palette(): Record<string, string> {
 export async function renderInsights(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="view-head">
-      <h2>Insights</h2>
       <div class="toolbar">
         <select data-role="period" style="width:auto">
           ${PERIODS.map(([k, label]) =>

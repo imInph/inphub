@@ -29,7 +29,6 @@ let repoFilter = '';
 export async function renderRepos(container: HTMLElement): Promise<void> {
   container.innerHTML = `
     <div class="view-head">
-      <h2>Repositories</h2>
       <div class="toolbar">
         <input type="search" data-role="search" placeholder="Filter repos…" style="width:180px">
         ${aiAvailable ? `<button class="btn" data-action="analyze-stale" title="Runs AI analysis on every repo untouched for ${staleDays}+ days and saves suggestions to each repo's Details.">Analyze stale</button>` : ''}

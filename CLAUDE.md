@@ -133,6 +133,11 @@ are noise in prose a human reads).
 `CHAT_ACTIONS` covers every area, not just todos (add/complete/update todo · add/log/unlog habit ·
 add/progress/status goal · add/update note · add/update/delete expense · repo suggestion). Three
 rules hold for all of them:
+- **Exactly one item.** A name must pick out one row: in `chat_resolve()` an exact title that is
+  also contained in other titles ("Email Ali" next to "Email Ali about rent") fails as ambiguous
+  with every candidate id, and prompt rule 8 tells the model to ask instead of choosing. Ids skip
+  the check; categories are exempt. The resolver also reads the key spellings models invent
+  (`habit_name`, `task`, a numeric name) so a right answer under a wrong key still works.
 - **Resolve, don't trust.** `chat_resolve($uid, $kind, $args)` finds the row by id **or** name
   (models send names however firmly the prompt says otherwise), always scoped to `user_id`, and an
   ambiguous name errors with the candidate ids rather than picking one. Table/column names come
@@ -142,8 +147,17 @@ rules hold for all of them:
   actual reason ("there is no task with id 999") instead of returning null. `chat_turn()` catches
   it, shows it, and `recent_chat_text()` replays every outcome into the next turn's transcript as a
   `(system: result of those actions, …)` line, that feedback loop is what lets a model correct a
-  wrong id instead of silently repeating it. Validate arguments with `chat_date()` (which also
-  accepts "today"/"tomorrow"), `chat_text()`, `chat_amount()` rather than letting MySQL reject them.
+  wrong id instead of silently repeating it. `action_results_line()` builds that line: successes
+  carry the touched row as `[expense id 395]` (from the `ref` that `action_done()` returns, never
+  shown to the user) and failures carry the args that were sent. That is how "change that to 380"
+  finds the row just created. Validate arguments with `chat_date()` (which also accepts
+  "today"/"tomorrow"), `chat_text()`, `chat_amount()` rather than letting MySQL reject them.
+- **One repair pass.** The reply prose is written before actions run, so when any action fails
+  `chat_turn()` makes one more `ai_generate()` call with the results; its prose replaces the
+  first reply (which claimed success) and it may retry **only the tools that failed**, so a
+  succeeded `add_*` can never be duplicated. No second round. The chat snapshot lists money entries
+  by `id DESC` (recently added), not `spent_at`: post-dated rows used to push today's entry out
+  and the model guessed its id. An empty `{"actions": []}` block is still stripped from the reply.
 - Every AI-initiated write logs an `activity_log` row with `actor='ai'`.
 
 Chat conversations persist in `chat_sessions` (+ `session_id` on `chat_messages`), titled from the
@@ -196,11 +210,56 @@ stats.php, so a chart draws a timeline instead of a list of days that happened t
 Chart colours are read from the CSS custom properties at draw time, so charts follow the
 light/dark switch; every chart instance is destroyed before a redraw.
 
+### Dashboard widgets (`src/widgets.ts`, `src/dashboard.ts`, `src/widget-picker.ts`)
+Every widget is an entry in `WIDGETS` (widgets.ts), and its id **must also be in
+`DASHBOARD_WIDGETS` in `lib/helpers.php`**: `normalise_dashboard_layout()` drops unknown ids on
+save, so a TS-only widget can never be kept. The user's layout is the `dashboard_widgets` setting
+(`[{id, size:'normal'|'wide'}]`, enabled widgets only, in order); unset means every widget in
+default order. All widgets render from the one `stats.php?action=dashboard` payload; the few with
+live behaviour get `mount()` after insertion (the clock uses one module-wide interval that looks
+nodes up each tick, never captured ones). Masonry packing is `masonry()` in dashboard.ts: a 4px
+`grid-auto-rows` grid where each widget spans rows from its `.widget-inner` height, then a second
+pass stretches a widget down into any hole a Wide widget left. The `ResizeObserver` is module-level
+and disconnected on every render. `ROW_UNIT` must equal `grid-auto-rows` in app.css. The Customize
+sheet's lists use `data-role="pick-*"` because `data-role="widgets"`/`"shortcuts"` already exist in
+the dashboard DOM.
+
+### Appearance ("Glass" design system)
+`<html>` carries `data-theme`, `data-accent`, `data-wallpaper` and `data-glass` (full|reduced), plus
+`--wp-image` for a custom wallpaper. Settings keys `ui_accent` / `ui_wallpaper` / `ui_wallpaper_url` /
+`ui_transparency` are whitelisted and validated in `api/settings.php` against `UI_ACCENTS` /
+`UI_WALLPAPERS` / `UI_TRANSPARENCY` / `is_http_url()` in `lib/helpers.php`; `ui_appearance()` gives
+index.php the server values, and a stored URL only reaches CSS through `css_url()` (PHP) / `cssUrl()`
+(app.ts). Like the theme, the last saved look is cached in `localStorage['inphub.appearance']` and
+applied by the pre-paint scripts in index.php and login.php; always go through `applyTheme()` /
+`applyAppearance()` in app.ts, which keep that cache in sync (Settings previews call them with
+`remember=false`). In app.css, keep every v2 token name (`--bg`, `--bg-elev`, `--card`, `--border`,
+`--text-dim`, `--accent`, …): inline styles use them and the charts read `--accent/--good/--warn/--bad/
+--text-dim/--border` at draw time, so those must stay plain colours, never `color-mix()`. Glass
+surfaces take their colour from `--glass-bg(-strong)` and blur from `--glass-blur`, which the
+reduced-transparency blocks swap for opaque values, so never hardcode a translucent background
+on a new panel. Only `<html>` paints `--bg`: a body background would cover the `z-index:-1`
+wallpaper. The page title lives in the topbar (`#page-title`, set by `activate()`), so views do not
+render their own `<h2>`.
+
 ### Frontend (`src/`)
 `app.ts` is the SPA shell (hash routing, lazy per-view data load, theme, clock, keyboard shortcuts,
 mobile drawer nav). Each view module (`todos.ts`, `expenses.ts`, …) exposes a render entry point
 mounted into its `#view-<id>` section in `public/index.php`. `ui.ts` holds toasts/modals/
-safe-markdown/formatting. Chart.js is loaded from CDN (expense charts only) and used as a global.
+formatting and `markdown()`. Chart.js, marked (+ marked-footnote) and DOMPurify are vendored in
+`public/assets/vendor/` (committed, loaded by `defer` tags in index.php, used as globals; refresh
+them with `npm install && npm run vendor`, then update the file names in index.php).
+
+`markdown(src, {embeds, tasks})` is marked (GFM, breaks, footnotes) → DOMPurify → a DOM pass. Its
+output renders notes, chat, the brief, the weekly review and **GitHub READMEs**, so keep the
+sanitiser strict: `ALLOW_DATA_ATTR: false` (a `data-action` in content would fire a view's
+`onAction()` handler), `SANITIZE_NAMED_PROPS` (ids get `user-content-`, no shadowing `#toasts`),
+no style/forms/iframes, and classes filtered to `SAFE_CLASS` (raw `class="palette"` would be a
+full-screen overlay). The only iframes are players `buildEmbed()` assembles from an id parsed out
+of a bare YouTube/Vimeo/Spotify/SoundCloud link. `#anchor` links are intercepted and scrolled
+within their `.md` block, because a hash change is a route change. Task checkboxes are marked
+with a per-page class so only real `- [ ]` items can toggle; `toggleMarkdownTask()` edits the n-th
+marker outside code fences and refuses when the rendered and source counts differ.
 
 Conventions that prevent recurring bugs:
 - **View containers are persistent nodes whose `innerHTML` is swapped on every render.** Wire
@@ -224,7 +283,7 @@ Conventions that prevent recurring bugs:
 - **Dates:** the server compares in *local* time (`date('Y-m-d')`). Use `localDate()` /
   `localDateTime()` / `todayStr()` from `ui.ts`; never `toISOString()` (UTC, wrong day near
   midnight).
-- All user data interpolated into HTML goes through `escapeHtml()` (or `safeMarkdown()`).
+- All user data interpolated into HTML goes through `escapeHtml()` (or `markdown()`).
 - Theme: `data-theme` on `<html>`, cached in `localStorage['inphub.theme']` with pre-paint scripts
   in `index.php` and `login.php`; the `settings` table stays the source of truth.
 - AI visibility: `refreshAiAvailability()` in `app.ts` re-checks `ai?action=status` and

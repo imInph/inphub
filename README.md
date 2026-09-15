@@ -1,6 +1,6 @@
 # inphub
 
-v2.1.2, MIT licensed.
+v3.0.0, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
@@ -11,13 +11,27 @@ It's PHP 8 and MySQL on the backend with no framework, and TypeScript on the
 frontend compiled to plain ES modules. No React, no bundler. It runs on XAMPP on
 my own machine, not on a server.
 
-Two things worth knowing if you poke around:
+Some stuff you might want to know if you look around:
 
+- The dashboard is all widgets now. The button next to the Google search bar
+  opens a popup where you can turn widgets on and off, drag them into whatever
+  order you want and make some of them wide. They fill in the gaps by themselves
+  so there are no weird empty spots. My site shortcuts are in a bar on the right
+  (on a phone it moves to the top) and you edit those in the same popup.
+- Settings has an Appearance section: dark or light, an accent color, and a
+  wallpaper (a few built in ones, or paste a link to your own picture). The
+  panels are see-through like the new iOS look, so if that's too much or your
+  laptop starts lagging, turn on Reduce transparency.
 - Press `k` (or Ctrl/Cmd+K) to search across tasks, money, notes, habits, goals
   and repos, then Enter to jump to whatever you picked. `?` shows the shortcuts.
 - The Insights tab has charts that span the different sections: spend by weekday,
   how consistent I've been with habits, focus minutes and tasks finished over
   time, and which hours of the day I actually do things.
+- Notes support basically all of markdown now, the GitHub kind: tables,
+  checklists you can tick straight from the note, footnotes, images. If you put
+  a YouTube, Vimeo, Spotify or SoundCloud link on its own line it turns into a
+  player. The markdown libraries are saved in `public/assets/vendor/`, so it
+  still doesn't load anything from a CDN.
 
 ## What you need
 
@@ -75,9 +89,9 @@ works on Windows without changes.
 
 ## Upgrading an older copy
 
-If your database is from before v2.0.0, run the migration once. Going from
-2.0.0 to 2.1.x doesn't need anything, the new LM Studio settings fill themselves
-in with defaults.
+If your database is from before v2.0.0, run the migration once. If you're already
+on 2.0.0 or newer you don't have to do anything, the newer settings (LM Studio,
+widgets, appearance) just use their defaults until you change them.
 
 ```bash
 mysql -u root inphub < db/migrate-2026-09-12.sql
@@ -120,6 +134,11 @@ Off unless you turn it on. In Settings, AI assistant, pick a provider:
 There's a Test connection button. Anything the AI changes gets written to the
 activity log with `actor = ai`, so you can see what it did.
 
+It used to guess when I was vague, like completing a random "Email Ali" task when
+I had two of them, or saying it logged something when it actually failed. Now if
+it's not sure which thing you mean it asks first, and if an action fails it gets
+one more try to fix it or ask you, instead of pretending it worked.
+
 Smaller local models needed the instructions spelled out more than Claude did
 before they could use the actions reliably, and the reply parser accepts a few
 different JSON shapes because they don't all format it the same way. Thinking
@@ -136,6 +155,7 @@ it, which is the default.
 | --- | --- |
 | `npm run build` | Compiles `src/*.ts` into `public/assets/js/` and stamps the build id |
 | `npm run watch` | Recompiles while you edit |
+| `npm run vendor` | Copies marked, DOMPurify and the footnote plugin into `public/assets/vendor/`. Only needed if you update them |
 | `php -l <file>` | Syntax-checks one PHP file. There are no tests. |
 | `php tools/hashpw.php "pw"` | Prints a bcrypt hash for a new user |
 
@@ -146,9 +166,9 @@ config/   DB credentials (config.php is git-ignored)
 db/       PDO connection and the dated migration files
 lib/      shared backend: auth, helpers, provisioning, activity log, github, ai
 api/      the JSON endpoints, all behind a login and scoped to one user
-public/   web root: app shell, login, css, icons, compiled JS, vendored Chart.js
+public/   web root: app shell, login, css, icons, compiled JS, vendored libraries
 src/      TypeScript source
-tools/    hashpw and the build-id stamper
+tools/    hashpw, the build-id stamper and the vendor copy script
 ```
 
 Every `/api/*` endpoint replies with the same envelope, `{ "ok": true, "data": ... }`
@@ -162,6 +182,9 @@ user's id.
 - Queries use prepared statements, so user input never gets concatenated into SQL.
 - The GitHub token and AI API keys are per-user, kept in the database, shown in
   password fields and masked when read back.
+- Markdown (notes, AI replies, GitHub READMEs) goes through DOMPurify before it
+  ends up on the page, so HTML in a note can't run scripts. Video embeds are
+  built from the video id, not from whatever the link says.
 
 This is meant for localhost and I haven't hardened it for the internet. There's
 no rate limiting on the login form and no CSRF tokens. Because the folder sits
