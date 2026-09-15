@@ -19,7 +19,7 @@ interface SettingsPayload {
   claude_api_key: string; claude_api_key_set: boolean; claude_model: string;
   ollama_base_url: string; ollama_model: string;
   lmstudio_base_url: string; lmstudio_model: string; lmstudio_api_key: string; lmstudio_api_key_set: boolean;
-  ui_accent: string; ui_wallpaper: string; ui_wallpaper_url: string; ui_transparency: string;
+  ui_accent: string; ui_wallpaper: string; ui_wallpaper_url: string; ui_transparency: string; ui_logo_tint: string;
 }
 
 /** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
@@ -49,6 +49,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   const accent = root.getAttribute('data-accent') || s.ui_accent || 'blue';
   const wallpaper = root.getAttribute('data-wallpaper') || s.ui_wallpaper || 'aurora';
   const transparency = root.getAttribute('data-glass') || s.ui_transparency || 'full';
+  // Plain and Custom have no palette, so the logo can only follow the accent there.
+  const logoLocked = !wallpaperHasPalette(wallpaper);
+  const logoTint = logoLocked ? 'accent' : (root.getAttribute('data-logo') || s.ui_logo_tint || 'accent');
   const wpUrl = s.ui_wallpaper_url || '';
 
   container.innerHTML = `
@@ -64,7 +67,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
             </div>
             <input type="hidden" name="theme" value="${escapeHtml(theme)}">
           </div>
-          <div class="appearance-row"><span>Accent colour</span>
+          <div class="appearance-row"><span>Accent color</span>
             <div class="swatches">
               ${ACCENTS.map(([k, label, hex]) => `
                 <button type="button" class="swatch ${accent === k ? 'on' : ''}" data-pick="ui_accent" data-value="${k}"
@@ -82,6 +85,15 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
             <input type="hidden" name="ui_wallpaper" value="${escapeHtml(wallpaper)}">
             <label data-role="wp-url" style="margin-top:12px" ${wallpaper === 'custom' ? '' : 'hidden'}><span>Image URL</span>
               <input name="ui_wallpaper_url" type="url" inputmode="url" value="${escapeHtml(wpUrl)}" placeholder="https://example.com/wallpaper.jpg" autocomplete="off"></label>
+          </div>
+          <div class="appearance-row ${logoLocked ? 'is-locked' : ''}" data-role="logo-row"><span>Logo color</span>
+            <div class="segmented" role="group" aria-label="Logo color">
+              ${[['accent', 'Accent color'], ['wallpaper', 'Wallpaper']].map(([k, label]) => `
+                <button type="button" data-pick="ui_logo_tint" data-value="${k}" class="${logoTint === k ? 'on' : ''}" aria-pressed="${logoTint === k}"
+                  ${logoLocked ? 'disabled' : ''}>${label}</button>`).join('')}
+            </div>
+            <small class="logo-lock-note">Plain and Custom wallpapers don't have colors of their own, so the logo uses your accent color.</small>
+            <input type="hidden" name="ui_logo_tint" value="${escapeHtml(logoTint)}">
           </div>
           <label class="checkbox"><input type="checkbox" data-role="reduce" ${transparency === 'reduced' ? 'checked' : ''}>
             <span>Reduce transparency</span></label>
@@ -336,12 +348,18 @@ async function renderAdmin(container: HTMLElement): Promise<void> {
 
 /* ------------------------------------------------------------- appearance */
 
+/** Wallpapers with a colour palette the logo can use (UI_WALLPAPERS minus plain/custom). */
+function wallpaperHasPalette(wallpaper: string): boolean {
+  return wallpaper !== 'plain' && wallpaper !== 'custom';
+}
+
 function lookFromForm(v: Record<string, string>): Appearance {
   return {
     accent: v.ui_accent,
     wallpaper: v.ui_wallpaper,
     wallpaper_url: v.ui_wallpaper_url ?? '',
     transparency: v.ui_transparency,
+    logo_tint: v.ui_logo_tint,
   };
 }
 
@@ -360,19 +378,37 @@ function wireAppearance(form: HTMLFormElement): void {
     applyAppearance(lookFromForm(v), false);
   };
 
+  const select = (key: string, value: string) => {
+    field(key).value = value;
+    section.querySelectorAll<HTMLElement>(`[data-pick="${key}"]`).forEach((b) => {
+      const on = b.dataset.value === value;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  };
+
+  // The user's own logo choice, put back when they leave Plain/Custom again.
+  let chosenLogoTint = field('ui_logo_tint').value;
+  const lockLogo = (wallpaper: string) => {
+    const locked = !wallpaperHasPalette(wallpaper);
+    section.querySelector('[data-role="logo-row"]')?.classList.toggle('is-locked', locked);
+    section.querySelectorAll<HTMLButtonElement>('[data-pick="ui_logo_tint"]').forEach((b) => {
+      b.disabled = locked;
+    });
+    select('ui_logo_tint', locked ? 'accent' : chosenLogoTint);
+  };
+
   section.addEventListener('click', (e) => {
     const pick = (e.target as HTMLElement).closest<HTMLElement>('[data-pick]');
-    if (!pick) return;
+    if (!pick || (pick as HTMLButtonElement).disabled) return;
     const key = pick.dataset.pick!;
-    field(key).value = pick.dataset.value!;
-    section.querySelectorAll<HTMLElement>(`[data-pick="${key}"]`).forEach((b) => {
-      b.classList.toggle('on', b === pick);
-      b.setAttribute('aria-pressed', String(b === pick));
-    });
+    select(key, pick.dataset.value!);
+    if (key === 'ui_logo_tint') chosenLogoTint = pick.dataset.value!;
     if (key === 'ui_wallpaper') {
       const urlRow = section.querySelector<HTMLElement>('[data-role="wp-url"]')!;
       urlRow.hidden = pick.dataset.value !== 'custom';
       if (!urlRow.hidden) urlRow.querySelector('input')?.focus();
+      lockLogo(pick.dataset.value!);
     }
     preview();
   });

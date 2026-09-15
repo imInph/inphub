@@ -1,10 +1,10 @@
 /**
  * inphub: habits: today toggles, current/best streaks, 140-day heatmap.
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate, flashFocused, fmtDate, confetti, } from './ui.js?v=a03b746989';
-import { currentParams } from './app.js?v=a03b746989';
-import { opts } from './todos.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, emptyState, toast, onAction, openModal, formValues, confirmDialog, localDate, flashFocused, fmtDate, confetti, } from './ui.js?v=83d0559b02';
+import { currentParams } from './app.js?v=83d0559b02';
+import { opts } from './todos.js?v=83d0559b02';
 /** Streak lengths worth celebrating, checked after each log. */
 const MILESTONES = [7, 30, 100, 365];
 export async function renderHabits(container) {

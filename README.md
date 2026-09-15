@@ -20,6 +20,7 @@ Some stuff you might want to know if you look around:
   (on a phone it moves to the top) and you edit those in the same popup.
 - Settings has an Appearance section: dark or light, an accent color, and a
   wallpaper (a few built in ones, or paste a link to your own picture). The
+  inphub logo can follow either the accent color or the wallpaper's colors. The
   panels are see-through like the new iOS look, so if that's too much or your
   laptop starts lagging, turn on Reduce transparency.
 - Press `k` (or Ctrl/Cmd+K) to search across tasks, money, notes, habits, goals

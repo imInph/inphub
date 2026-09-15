@@ -2,9 +2,9 @@
  * inphub: repositories: synced from GitHub, sorted by staleness, health badge,
  * pin, detail drawer with README + AI suggestions (suggestions surfaced in P2).
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, confirmDialog, flashFocused, loadingState, } from './ui.js?v=a03b746989';
-import { aiAvailable, currentParams } from './app.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, fmtDate, timeAgo, markdown, emptyState, toast, onAction, openModal, confirmDialog, flashFocused, loadingState, } from './ui.js?v=83d0559b02';
+import { aiAvailable, currentParams } from './app.js?v=83d0559b02';
 let staleDays = 60;
 let cache = [];
 /** Free-text filter over the loaded repos (name, description, language). */

@@ -1,9 +1,9 @@
 /**
  * inphub: notes: capture, pin, tag, search, markdown-rendered preview.
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, loadingState, toggleMarkdownTask, } from './ui.js?v=a03b746989';
-import { currentParams } from './app.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, timeAgo, markdown, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, loadingState, toggleMarkdownTask, } from './ui.js?v=83d0559b02';
+import { currentParams } from './app.js?v=83d0559b02';
 let query = '';
 let searchTimer = 0;
 export async function renderNotes(container) {

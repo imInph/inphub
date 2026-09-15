@@ -75,6 +75,7 @@ $wpStyle = $look['wallpaper_url'] !== '' ? '--wp-image: ' . css_url($look['wallp
       data-accent="<?= htmlspecialchars($look['accent'], ENT_QUOTES) ?>"
       data-wallpaper="<?= htmlspecialchars($look['wallpaper'], ENT_QUOTES) ?>"
       data-glass="<?= htmlspecialchars($look['transparency'], ENT_QUOTES) ?>"
+      data-logo="<?= htmlspecialchars($look['logo_tint'], ENT_QUOTES) ?>"
       <?= $wpStyle !== '' ? 'style="' . htmlspecialchars($wpStyle, ENT_QUOTES) . '"' : '' ?>>
 <head>
     <meta charset="utf-8">
@@ -152,6 +153,7 @@ $wpStyle = $look['wallpaper_url'] !== '' ? '--wp-image: ' . css_url($look['wallp
                 if (a.accent) h.setAttribute('data-accent', a.accent);
                 if (a.wallpaper) h.setAttribute('data-wallpaper', a.wallpaper);
                 if (a.transparency) h.setAttribute('data-glass', a.transparency);
+                if (a.logo) h.setAttribute('data-logo', a.logo);
                 if (a.image) h.style.setProperty('--wp-image', a.image);
                 else h.style.removeProperty('--wp-image');
             }
@@ -164,7 +166,7 @@ $wpStyle = $look['wallpaper_url'] !== '' ? '--wp-image: ' . css_url($look['wallp
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="brand">
-                <span class="logo-mark">in</span><span class="logo-rest">phub</span>
+                <span class="logo">inphub</span>
                 <span class="brand-version">v<?= htmlspecialchars(INPHUB_VERSION) ?></span>
             </div>
             <nav class="nav">

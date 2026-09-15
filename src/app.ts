@@ -24,12 +24,14 @@ import { renderInsights } from './insights.js';
 import { renderActivity } from './activity.js';
 import { renderSettings } from './settings.js';
 
-/** Wallpaper, accent and transparency, mirrors ui_appearance() in lib/helpers.php. */
+/** Wallpaper, accent, transparency and logo tint, mirrors ui_appearance() in lib/helpers.php. */
 export interface Appearance {
   accent: string;
   wallpaper: string;
   wallpaper_url: string;
   transparency: string;
+  /** 'accent' or 'wallpaper': where the logo badge's gradient comes from. */
+  logo_tint: string;
 }
 
 /** The bootstrap payload injected by index.php. */
@@ -229,13 +231,14 @@ export function applyAppearance(a: Appearance, remember = true): void {
   root.setAttribute('data-accent', a.accent || 'blue');
   root.setAttribute('data-wallpaper', a.wallpaper || 'aurora');
   root.setAttribute('data-glass', a.transparency || 'full');
+  root.setAttribute('data-logo', a.logo_tint === 'wallpaper' ? 'wallpaper' : 'accent');
   const image = a.wallpaper_url && /^https?:\/\//i.test(a.wallpaper_url) ? cssUrl(a.wallpaper_url) : '';
   if (image) root.style.setProperty('--wp-image', image);
   else root.style.removeProperty('--wp-image');
   if (!remember) return;
   try {
     localStorage.setItem(APPEARANCE_KEY, JSON.stringify({
-      accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, image, url: a.wallpaper_url,
+      accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, logo: a.logo_tint, image, url: a.wallpaper_url,
     }));
   } catch {
     /* storage unavailable */

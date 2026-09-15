@@ -358,6 +358,9 @@ const UI_WALLPAPERS = ['aurora', 'sunset', 'ocean', 'forest', 'graphite', 'plain
 
 const UI_TRANSPARENCY = ['full', 'reduced'];
 
+/** Where the sidebar logo badge takes its gradient from. */
+const UI_LOGO_TINTS = ['accent', 'wallpaper'];
+
 /**
  * Clean a client-sent widget layout: a list of {id, size} (or a JSON string of
  * one). Unknown ids and duplicates are dropped, sizes fall back to the widget's
@@ -423,6 +426,10 @@ function ui_appearance(int $userId): array
         'wallpaper'     => $pick('ui_wallpaper', UI_WALLPAPERS, 'aurora'),
         'wallpaper_url' => is_http_url($url) ? $url : '',
         'transparency'  => $pick('ui_transparency', UI_TRANSPARENCY, 'full'),
+        // Plain and custom wallpapers have no palette, the logo follows the accent there.
+        'logo_tint'     => in_array($pick('ui_wallpaper', UI_WALLPAPERS, 'aurora'), ['plain', 'custom'], true)
+            ? 'accent'
+            : $pick('ui_logo_tint', UI_LOGO_TINTS, 'accent'),
     ];
 }
 

@@ -5,8 +5,8 @@
  * any actions the model requested, executes the whitelisted ones, and returns
  * a clean reply plus a list of what it did. We surface those as small notes.
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, markdown, toast } from './ui.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, markdown, toast } from './ui.js?v=83d0559b02';
 let panel = null;
 let loaded = false;
 /** Active conversation; null until the first message starts a new one. */

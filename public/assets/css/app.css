@@ -415,15 +415,41 @@ label.checkbox input { width: 44px; }
 .login-hint { margin-top: 20px; color: var(--text-faint); font-size: .8rem; text-align: center; }
 .login-version { margin-top: 6px; color: var(--text-faint); font-size: .72rem; text-align: center; }
 
-/* Brand: a small app-icon tile for "in". */
-.logo-mark {
-    display: inline-grid; place-items: center; min-width: 1.45em; height: 1.45em; padding: 0 .18em; margin-right: .12em;
-    border-radius: .42em; font-size: .78em; font-weight: 800; letter-spacing: -.04em;
-    color: var(--accent-fg);
-    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 70%, #fff), var(--accent) 60%, var(--accent-strong));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 12px -4px color-mix(in srgb, var(--accent) 80%, transparent);
+/* Brand: the whole word on a raised glass badge. By default it is tinted with
+   the accent picked in Settings; the --logo-* variables let the "Wallpaper"
+   logo color below swap in the wallpaper's palette. */
+.logo {
+    position: relative; display: inline-block; overflow: hidden; isolation: isolate;
+    padding: .12em .5em .16em; border-radius: .5em; line-height: 1.15;
+    --logo-a: color-mix(in srgb, var(--accent) 55%, #fff);
+    --logo-b: var(--accent);
+    --logo-c: color-mix(in srgb, var(--accent-strong) 85%, #000);
+    --logo-fg: var(--accent-fg);
+    color: var(--logo-fg);
+    background: linear-gradient(135deg, var(--logo-a) 0%, var(--logo-b) 48%, var(--logo-c) 100%);
+    border: 1px solid color-mix(in srgb, #fff 30%, transparent);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .45),
+        inset 0 -1px 0 rgba(0, 0, 0, .12),
+        0 8px 22px -8px color-mix(in srgb, var(--logo-b) 75%, transparent);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, .12);
 }
-.logo-rest { color: var(--text); }
+/* Logo color "Wallpaper" (data-logo on <html>): three colours from the chosen
+   wallpaper, deepened a little so white text stays readable. Plain and custom
+   wallpapers have no palette of their own, so they keep the accent gradient. */
+[data-logo="wallpaper"][data-wallpaper="aurora"] .logo   { --logo-a: #3b82f6; --logo-b: #7c3aed; --logo-c: #db2777; }
+[data-logo="wallpaper"][data-wallpaper="sunset"] .logo   { --logo-a: #f97316; --logo-b: #e11d48; --logo-c: #9333ea; }
+[data-logo="wallpaper"][data-wallpaper="ocean"] .logo    { --logo-a: #0891b2; --logo-b: #0369a1; --logo-c: #4f46e5; }
+[data-logo="wallpaper"][data-wallpaper="forest"] .logo   { --logo-a: #65a30d; --logo-b: #15803d; --logo-c: #0f766e; }
+[data-logo="wallpaper"][data-wallpaper="graphite"] .logo { --logo-a: #71717a; --logo-b: #52525b; --logo-c: #334155; }
+[data-logo="wallpaper"]:is([data-wallpaper="aurora"], [data-wallpaper="sunset"], [data-wallpaper="ocean"],
+    [data-wallpaper="forest"], [data-wallpaper="graphite"]) .logo { --logo-fg: #fff; }
+
+/* The glass: a soft specular sheen over the top half. */
+.logo::before {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, .38) 0%, rgba(255, 255, 255, .08) 48%, rgba(255, 255, 255, 0) 52%);
+}
 
 /* ==========================================================================
    App shell
@@ -783,6 +809,11 @@ label.checkbox input { width: 44px; }
 /* --- Settings: appearance --- */
 .appearance { display: grid; gap: 18px; }
 .appearance-row > span { display: block; margin-bottom: 8px; font-size: .8rem; font-weight: 550; color: var(--text-dim); }
+/* Logo color is locked to the accent on Plain/Custom: dimmed, with a note why. */
+.logo-lock-note { display: none; margin-top: 6px; font-size: .76rem; }
+.appearance-row.is-locked .segmented { opacity: .45; }
+.appearance-row.is-locked .segmented button { cursor: not-allowed; }
+.appearance-row.is-locked .logo-lock-note { display: block; }
 .swatches { display: flex; flex-wrap: wrap; gap: 12px; }
 .swatch {
     width: 30px; height: 30px; padding: 0; border: none; border-radius: 50%; cursor: pointer;

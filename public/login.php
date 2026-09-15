@@ -34,7 +34,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $theme = 'dark';
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme="<?= htmlspecialchars($theme, ENT_QUOTES) ?>" data-accent="blue" data-wallpaper="aurora" data-glass="full">
+<html lang="en" data-theme="<?= htmlspecialchars($theme, ENT_QUOTES) ?>" data-accent="blue" data-wallpaper="aurora" data-glass="full" data-logo="accent">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -63,6 +63,7 @@ $theme = 'dark';
                 if (a.accent) h.setAttribute('data-accent', a.accent);
                 if (a.wallpaper) h.setAttribute('data-wallpaper', a.wallpaper);
                 if (a.transparency) h.setAttribute('data-glass', a.transparency);
+                if (a.logo) h.setAttribute('data-logo', a.logo);
                 if (a.image) h.style.setProperty('--wp-image', a.image);
             }
         } catch (e) {}
@@ -72,7 +73,7 @@ $theme = 'dark';
     <div class="wallpaper" aria-hidden="true"></div>
     <main class="login-card glass">
         <div class="login-brand">
-            <span class="logo-mark">in</span><span class="logo-rest">phub</span>
+            <span class="logo">inphub</span>
         </div>
         <p class="login-sub">Sign in</p>
 

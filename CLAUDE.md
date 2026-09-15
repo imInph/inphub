@@ -225,10 +225,13 @@ sheet's lists use `data-role="pick-*"` because `data-role="widgets"`/`"shortcuts
 the dashboard DOM.
 
 ### Appearance ("Glass" design system)
-`<html>` carries `data-theme`, `data-accent`, `data-wallpaper` and `data-glass` (full|reduced), plus
-`--wp-image` for a custom wallpaper. Settings keys `ui_accent` / `ui_wallpaper` / `ui_wallpaper_url` /
-`ui_transparency` are whitelisted and validated in `api/settings.php` against `UI_ACCENTS` /
-`UI_WALLPAPERS` / `UI_TRANSPARENCY` / `is_http_url()` in `lib/helpers.php`; `ui_appearance()` gives
+`<html>` carries `data-theme`, `data-accent`, `data-wallpaper`, `data-glass` (full|reduced) and
+`data-logo` (accent|wallpaper: where the sidebar/login `.logo` badge gets its gradient; plain and
+custom wallpapers have no palette, so the Settings toggle locks to accent there and `api/settings.php`
+/ `ui_appearance()` force `ui_logo_tint` to `accent`), plus `--wp-image` for a custom wallpaper. Settings keys
+`ui_accent` / `ui_wallpaper` / `ui_wallpaper_url` / `ui_transparency` / `ui_logo_tint` are
+whitelisted and validated in `api/settings.php` against `UI_ACCENTS` / `UI_WALLPAPERS` /
+`UI_TRANSPARENCY` / `UI_LOGO_TINTS` / `is_http_url()` in `lib/helpers.php`; `ui_appearance()` gives
 index.php the server values, and a stored URL only reaches CSS through `css_url()` (PHP) / `cssUrl()`
 (app.ts). Like the theme, the last saved look is cached in `localStorage['inphub.appearance']` and
 applied by the pre-paint scripts in index.php and login.php; always go through `applyTheme()` /

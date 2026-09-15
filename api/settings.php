@@ -16,7 +16,7 @@ const ALLOWED_SETTING_KEYS = [
     'stale_repo_days', 'ai_enabled', 'ai_provider', 'claude_api_key', 'claude_model',
     'ollama_base_url', 'ollama_model', 'lmstudio_base_url', 'lmstudio_model', 'lmstudio_api_key',
     'dashboard_shortcuts', 'dashboard_widgets',
-    'ui_accent', 'ui_wallpaper', 'ui_wallpaper_url', 'ui_transparency',
+    'ui_accent', 'ui_wallpaper', 'ui_wallpaper_url', 'ui_transparency', 'ui_logo_tint',
 ];
 
 /** Keys restricted to a fixed set of values (lists live in lib/helpers.php). */
@@ -24,6 +24,7 @@ const ENUM_SETTING_KEYS = [
     'ui_accent'       => UI_ACCENTS,
     'ui_wallpaper'    => UI_WALLPAPERS,
     'ui_transparency' => UI_TRANSPARENCY,
+    'ui_logo_tint'    => UI_LOGO_TINTS,
 ];
 
 /** Keys stored as plain numbers, normalised on save so junk never round-trips. */
@@ -79,6 +80,10 @@ api_handle(function (): void {
                     fail('The wallpaper must be an http(s) image URL.', 422);
                 }
                 $settings['ui_wallpaper_url'] = $url;
+            }
+            // Plain and custom wallpapers have no palette to tint the logo with.
+            if (in_array((string) ($settings['ui_wallpaper'] ?? ''), ['plain', 'custom'], true)) {
+                $settings['ui_logo_tint'] = 'accent';
             }
             if (array_key_exists('dashboard_widgets', $settings)) {
                 $layout = normalise_dashboard_layout($settings['dashboard_widgets']);

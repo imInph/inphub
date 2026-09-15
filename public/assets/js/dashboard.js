@@ -6,12 +6,12 @@
  * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets
  * themselves live in widgets.ts.
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=a03b746989';
-import { go } from './app.js?v=a03b746989';
-import { icon } from './icons.js?v=a03b746989';
-import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=a03b746989';
-import { openWidgetPicker } from './widget-picker.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=83d0559b02';
+import { go } from './app.js?v=83d0559b02';
+import { icon } from './icons.js?v=83d0559b02';
+import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=83d0559b02';
+import { openWidgetPicker } from './widget-picker.js?v=83d0559b02';
 let data = null;
 let shortcuts = [];
 export async function renderDashboard(container) {

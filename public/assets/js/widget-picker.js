@@ -5,11 +5,11 @@
  * order, pick Normal or Wide. Shortcuts: rename, reorder, add, remove. One Save
  * writes both settings in a single request.
  */
-import { apiPost } from './api.js?v=a03b746989';
-import { escapeHtml, openModal, toast, sortable } from './ui.js?v=a03b746989';
-import { aiAvailable } from './app.js?v=a03b746989';
-import { icon } from './icons.js?v=a03b746989';
-import { WIDGETS, defaultLayout, isWidgetId, } from './widgets.js?v=a03b746989';
+import { apiPost } from './api.js?v=83d0559b02';
+import { escapeHtml, openModal, toast, sortable } from './ui.js?v=83d0559b02';
+import { aiAvailable } from './app.js?v=83d0559b02';
+import { icon } from './icons.js?v=83d0559b02';
+import { WIDGETS, defaultLayout, isWidgetId, } from './widgets.js?v=83d0559b02';
 export function openWidgetPicker(layout, shortcuts, onSaved) {
     const root = openModal({
         title: 'Customize dashboard',

@@ -6,21 +6,21 @@
  * `render(container)` entry point; we import them all up front (small app, no
  * bundler) and mount the active one into its <section id="view-<id>">.
  */
-import { apiGet, apiPost } from './api.js?v=a03b746989';
-import { toast, openModal, escapeHtml } from './ui.js?v=a03b746989';
-import { initChat } from './chat.js?v=a03b746989';
-import { initPalette, setPaletteChat } from './command-palette.js?v=a03b746989';
-import { renderDashboard } from './dashboard.js?v=a03b746989';
-import { renderTodos } from './todos.js?v=a03b746989';
-import { renderExpenses } from './expenses.js?v=a03b746989';
-import { renderRepos } from './repos.js?v=a03b746989';
-import { renderHabits } from './habits.js?v=a03b746989';
-import { renderGoals } from './goals.js?v=a03b746989';
-import { renderNotes } from './notes.js?v=a03b746989';
-import { renderFocus } from './focus.js?v=a03b746989';
-import { renderInsights } from './insights.js?v=a03b746989';
-import { renderActivity } from './activity.js?v=a03b746989';
-import { renderSettings } from './settings.js?v=a03b746989';
+import { apiGet, apiPost } from './api.js?v=83d0559b02';
+import { toast, openModal, escapeHtml } from './ui.js?v=83d0559b02';
+import { initChat } from './chat.js?v=83d0559b02';
+import { initPalette, setPaletteChat } from './command-palette.js?v=83d0559b02';
+import { renderDashboard } from './dashboard.js?v=83d0559b02';
+import { renderTodos } from './todos.js?v=83d0559b02';
+import { renderExpenses } from './expenses.js?v=83d0559b02';
+import { renderRepos } from './repos.js?v=83d0559b02';
+import { renderHabits } from './habits.js?v=83d0559b02';
+import { renderGoals } from './goals.js?v=83d0559b02';
+import { renderNotes } from './notes.js?v=83d0559b02';
+import { renderFocus } from './focus.js?v=83d0559b02';
+import { renderInsights } from './insights.js?v=83d0559b02';
+import { renderActivity } from './activity.js?v=83d0559b02';
+import { renderSettings } from './settings.js?v=83d0559b02';
 export const boot = window.INPHUB;
 const VIEWS = {
     dashboard: renderDashboard,
@@ -182,6 +182,7 @@ export function applyAppearance(a, remember = true) {
     root.setAttribute('data-accent', a.accent || 'blue');
     root.setAttribute('data-wallpaper', a.wallpaper || 'aurora');
     root.setAttribute('data-glass', a.transparency || 'full');
+    root.setAttribute('data-logo', a.logo_tint === 'wallpaper' ? 'wallpaper' : 'accent');
     const image = a.wallpaper_url && /^https?:\/\//i.test(a.wallpaper_url) ? cssUrl(a.wallpaper_url) : '';
     if (image)
         root.style.setProperty('--wp-image', image);
@@ -191,7 +192,7 @@ export function applyAppearance(a, remember = true) {
         return;
     try {
         localStorage.setItem(APPEARANCE_KEY, JSON.stringify({
-            accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, image, url: a.wallpaper_url,
+            accent: a.accent, wallpaper: a.wallpaper, transparency: a.transparency, logo: a.logo_tint, image, url: a.wallpaper_url,
         }));
     }
     catch {
