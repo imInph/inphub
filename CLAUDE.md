@@ -215,6 +215,9 @@ endpoint sends no CORS headers. A slow or failing Google is **never** an error: 
 **Entry animations on containers use fill mode `backwards`, never `both`** (`.view`, dashboard
 widgets): a filled opacity/transform animation keeps the element isolated after it ends, so
 `backdrop-filter` on any glass inside it stops at that ancestor and blurs nothing behind the view.
+An element with its own `backdrop-filter` isolates its contents the same way, so a dimmed overlay
+(`.modal-backdrop`, `.palette`) puts its tint + blur on a `::before` layer, never on the element
+that contains the glass box.
 
 ### Insights (`api/insights.php` + `src/insights.ts`)
 One `?action=summary&period=` call feeds the whole view; nothing is stored. It reuses

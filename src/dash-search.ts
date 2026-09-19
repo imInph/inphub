@@ -174,6 +174,8 @@ export function mountDashSearch(container: HTMLElement, keep: { value: string; f
   });
   input.addEventListener('blur', () => setOpen(false));
   input.addEventListener('keydown', (e) => {
+    // Enter/arrows that confirm an IME composition belong to the IME.
+    if (e.isComposing) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!entries.length) return;
       e.preventDefault();

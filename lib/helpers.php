@@ -6,7 +6,7 @@
 declare(strict_types=1);
 
 /** App version, bump on release. Shown in the sidebar, login page, and export dumps. */
-const INPHUB_VERSION = '3.1.0';
+const INPHUB_VERSION = '3.1.1';
 
 /**
  * Read a value from config/config.php (the gitignored, per-machine config).

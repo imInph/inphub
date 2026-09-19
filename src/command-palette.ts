@@ -335,6 +335,8 @@ function paintActive(scroll: boolean): void {
 /* -------------------------------------------------------------------- keys */
 
 function onKey(e: KeyboardEvent): void {
+  // Enter/arrows that confirm an IME composition belong to the IME.
+  if (e.isComposing) return;
   if (e.key === 'Escape') {
     close();
   } else if (e.key === 'ArrowDown') {

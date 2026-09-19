@@ -10,10 +10,10 @@
  * dashboard render, so nothing stacks (the view container itself is only
  * ever wired through onAction()).
  */
-import { apiGet } from './api.js?v=c10f314afe';
-import { escapeHtml, money } from './ui.js?v=c10f314afe';
-import { go } from './app.js?v=c10f314afe';
-import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=c10f314afe';
+import { apiGet } from './api.js?v=5068af101e';
+import { escapeHtml, money } from './ui.js?v=5068af101e';
+import { go } from './app.js?v=5068af101e';
+import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=5068af101e';
 const GOOGLE_ROWS = 5;
 const INPHUB_ROWS = 5;
 const DEBOUNCE_MS = 150;
@@ -155,6 +155,9 @@ export function mountDashSearch(container, keep) {
     });
     input.addEventListener('blur', () => setOpen(false));
     input.addEventListener('keydown', (e) => {
+        // Enter/arrows that confirm an IME composition belong to the IME.
+        if (e.isComposing)
+            return;
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             if (!entries.length)
                 return;

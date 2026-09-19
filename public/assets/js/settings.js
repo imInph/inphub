@@ -3,10 +3,10 @@
  * and (admins only) an account management panel. Secrets arrive masked and are
  * only re-sent when the user actually types a new value.
  */
-import { apiGet, apiPost } from './api.js?v=c10f314afe';
-import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=c10f314afe';
-import { opts } from './todos.js?v=c10f314afe';
-import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=c10f314afe';
+import { apiGet, apiPost } from './api.js?v=5068af101e';
+import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=5068af101e';
+import { opts } from './todos.js?v=5068af101e';
+import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=5068af101e';
 const SECRET_UNCHANGED = '••••••••';
 /** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
 const ACCENTS = [

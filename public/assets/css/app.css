@@ -1006,12 +1006,18 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
 /* ==========================================================================
    Modal
    ========================================================================== */
+/* Overlays (this and .palette) dim + blur the page from a ::before layer, never
+   from the overlay itself: an element with backdrop-filter isolates everything
+   inside it, so the glass box on top would only blur the flat tint. */
 .modal-backdrop {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, .30);
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    position: fixed; inset: 0;
     /* Above the chat panel (60) and the mobile drawer (70). */
     display: grid; place-items: center; z-index: 90; padding: 20px;
-    animation: fadeIn .2s ease both;
+    animation: fadeIn .2s ease backwards;
+}
+.modal-backdrop::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(0, 0, 0, .30);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
 }
 .modal {
     width: 100%; max-width: 480px; border-radius: var(--radius-lg);
@@ -1045,9 +1051,12 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; font-
    Command palette (Spotlight)
    ========================================================================== */
 .palette {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, .26); z-index: 95;
-    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+    position: fixed; inset: 0; z-index: 95;
     display: flex; justify-content: center; align-items: flex-start; padding: 12vh 16px 0;
+}
+.palette::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; background: rgba(0, 0, 0, .26);
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .palette[hidden] { display: none; }
 .palette-box {

@@ -13,11 +13,11 @@
  * (as an earlier version did) stacks handlers on a node that is never
  * replaced; see the onAction() note in CLAUDE.md for the same hazard.
  */
-import { go } from './app.js?v=c10f314afe';
-import { openChat } from './chat.js?v=c10f314afe';
-import { apiGet, apiPost } from './api.js?v=c10f314afe';
-import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=c10f314afe';
-import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=c10f314afe';
+import { go } from './app.js?v=5068af101e';
+import { openChat } from './chat.js?v=5068af101e';
+import { apiGet, apiPost } from './api.js?v=5068af101e';
+import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=5068af101e';
+import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=5068af101e';
 /** Google suggestions shown under the fixed "Search Google for …" row. */
 const WEB_SUGGESTIONS = 4;
 const VIEW_COMMANDS = [
@@ -288,6 +288,9 @@ function paintActive(scroll) {
 }
 /* -------------------------------------------------------------------- keys */
 function onKey(e) {
+    // Enter/arrows that confirm an IME composition belong to the IME.
+    if (e.isComposing)
+        return;
     if (e.key === 'Escape') {
         close();
     }

@@ -6,13 +6,13 @@
  * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets
  * themselves live in widgets.ts.
  */
-import { apiGet, apiPost } from './api.js?v=c10f314afe';
-import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=c10f314afe';
-import { go } from './app.js?v=c10f314afe';
-import { icon } from './icons.js?v=c10f314afe';
-import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=c10f314afe';
-import { openWidgetPicker } from './widget-picker.js?v=c10f314afe';
-import { mountDashSearch } from './dash-search.js?v=c10f314afe';
+import { apiGet, apiPost } from './api.js?v=5068af101e';
+import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=5068af101e';
+import { go } from './app.js?v=5068af101e';
+import { icon } from './icons.js?v=5068af101e';
+import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=5068af101e';
+import { openWidgetPicker } from './widget-picker.js?v=5068af101e';
+import { mountDashSearch } from './dash-search.js?v=5068af101e';
 let data = null;
 let shortcuts = [];
 export async function renderDashboard(container) {

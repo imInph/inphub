@@ -5,8 +5,8 @@
  * vocabulary as Money. Chart.js is a global, vendored in public/assets/js and
  * loaded by the shell, so charts cost nothing extra here.
  */
-import { apiGet } from './api.js?v=c10f314afe';
-import { escapeHtml, money, fmtMonth, fmtDate, emptyState, loadingState, onAction } from './ui.js?v=c10f314afe';
+import { apiGet } from './api.js?v=5068af101e';
+import { escapeHtml, money, fmtMonth, fmtDate, emptyState, loadingState, onAction } from './ui.js?v=5068af101e';
 /** Same six windows as Money, server keys live in MONEY_PERIODS. */
 const PERIODS = [
     ['month', 'This month'],
