@@ -7,10 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `inphub` is a personal life-dashboard (expenses, GitHub repos, todos, habits, goals, notes, focus
 sessions, activity history) with hand-created logins and an optional AI layer. It runs locally on
 XAMPP: Apache + PHP 8.2+ + MySQL/MariaDB. Plain PHP backend (no framework), TypeScript frontend
-compiled to plain ES-module JS (no React, no bundler). Built on a dev machine, then the whole folder
-is copied into `htdocs/inphub` on a Windows XAMPP laptop, so keep paths relative / `__DIR__`-based
-and filenames lowercase. When deploying, `node_modules/` is skipped and the laptop's
-`config/config.php` is never overwritten.
+compiled to plain ES-module JS (no React, no bundler). The owner develops and runs it locally on
+macOS: the repo is edited and built here, then copied (not symlinked) into XAMPP's
+`/Applications/XAMPP/xamppfiles/htdocs/inphub` and opened at `http://localhost/inphub/public/`.
+To test a change, rsync the changed folders into that copy, skipping `node_modules/` and never
+overwriting its `config/config.php`, then hard-reload the page (a same-hash navigation keeps the old
+JS). There is no remote server to deploy to; shipping means commit + push to GitHub. The public
+README still documents a generic (Windows) XAMPP install, so keep paths relative / `__DIR__`-based
+and filenames lowercase.
 
 The original specification lives in `inphub-prompt.md` (kept locally, gitignored, not in the
 public repo). **The database schema is `inphub.sql` and must
@@ -37,6 +41,7 @@ sidebar, login footer, and JSON export). Bump it together with `version` in `pac
   carries a `window.__inphubLoaded` guard that surfaces exactly that failure.
 - **Watch:** `npm run watch` (`tsc -w`).
 - **Lint PHP:** `php -l <file>`, there is no PHP test suite; syntax-check changed files this way.
+  `php` is not on the PATH here, use XAMPP's: `/Applications/XAMPP/xamppfiles/bin/php -l <file>`.
 - **Hash a password (to add a user by hand):** `php tools/hashpw.php "thePassword"` → paste the
   output into an `INSERT INTO users`.
 - **No automated test framework.** Verification is manual against a running XAMPP instance.
