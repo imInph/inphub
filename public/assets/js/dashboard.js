@@ -1,17 +1,18 @@
 /**
- * inphub: dashboard: Google search, a gap-free widget grid, and a shortcuts
+ * inphub: dashboard: Google search (with suggestions, dash-search.ts), a gap-free widget grid, and a shortcuts
  * rail, all stitched from one stats.php?action=dashboard call.
  *
  * Which widgets show, their order and their size come from the user's
  * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets
  * themselves live in widgets.ts.
  */
-import { apiGet, apiPost } from './api.js?v=83d0559b02';
-import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=83d0559b02';
-import { go } from './app.js?v=83d0559b02';
-import { icon } from './icons.js?v=83d0559b02';
-import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=83d0559b02';
-import { openWidgetPicker } from './widget-picker.js?v=83d0559b02';
+import { apiGet, apiPost } from './api.js?v=c10f314afe';
+import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=c10f314afe';
+import { go } from './app.js?v=c10f314afe';
+import { icon } from './icons.js?v=c10f314afe';
+import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=c10f314afe';
+import { openWidgetPicker } from './widget-picker.js?v=c10f314afe';
+import { mountDashSearch } from './dash-search.js?v=c10f314afe';
 let data = null;
 let shortcuts = [];
 export async function renderDashboard(container) {
@@ -25,13 +26,18 @@ export async function renderDashboard(container) {
     data = d;
     shortcuts = Array.isArray(d.shortcuts) ? d.shortcuts : [];
     const rerender = () => renderDashboard(container);
+    // A background re-render must not wipe a half-typed search.
+    const prevSearch = container.querySelector('[data-role="search"]');
+    const keepSearch = prevSearch ? { value: prevSearch.value, focused: document.activeElement === prevSearch } : null;
     const layout = (Array.isArray(d.layout) ? d.layout : []).filter((l) => isWidgetId(l.id) && widgetAvailable(l.id));
     container.innerHTML = `
     <div class="dash${firstPaint ? ' dash-enter' : ''}">
       <div class="dash-top">
         <form class="dash-search" action="https://www.google.com/search" method="get" target="_self" role="search">
           <span class="dash-search-ico">${icon('search', 18)}</span>
-          <input type="text" name="q" placeholder="Search Google" autocomplete="off" spellcheck="false" data-role="search" aria-label="Search Google">
+          <input type="text" name="q" placeholder="Search Google" autocomplete="off" spellcheck="false" data-role="search" aria-label="Search Google"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="dash-suggest">
+          <div class="dash-suggest palette-list" id="dash-suggest" data-role="suggest" role="listbox" aria-label="Suggestions" hidden></div>
         </form>
         <button class="btn btn-glass btn-icon dash-customize" data-action="customize" title="Customize dashboard" aria-label="Customize dashboard">
           ${icon('customize', 20)}</button>
@@ -53,6 +59,7 @@ export async function renderDashboard(container) {
         </aside>
       </div>
     </div>`;
+    mountDashSearch(container, keepSearch);
     const grid = container.querySelector('[data-role="widgets"]');
     masonry(grid);
     layout.forEach((l) => WIDGETS[l.id].mount?.(container, rerender));

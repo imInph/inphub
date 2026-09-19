@@ -3,10 +3,10 @@
  * and (admins only) an account management panel. Secrets arrive masked and are
  * only re-sent when the user actually types a new value.
  */
-import { apiGet, apiPost } from './api.js?v=83d0559b02';
-import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=83d0559b02';
-import { opts } from './todos.js?v=83d0559b02';
-import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=83d0559b02';
+import { apiGet, apiPost } from './api.js?v=c10f314afe';
+import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=c10f314afe';
+import { opts } from './todos.js?v=c10f314afe';
+import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=c10f314afe';
 const SECRET_UNCHANGED = '••••••••';
 /** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
 const ACCENTS = [
@@ -23,6 +23,7 @@ export async function renderSettings(container) {
     container.innerHTML = `${loadingState()}`;
     const s = await apiGet('settings', 'get');
     const aiOn = s.ai_enabled === '1';
+    const provider = s.ai_provider || 'claude';
     const root = document.documentElement;
     // What is on screen right now (the cache may be newer than the server).
     const theme = root.getAttribute('data-theme') || s.theme || 'dark';
@@ -102,18 +103,18 @@ export async function renderSettings(container) {
           <label class="checkbox"><input type="checkbox" name="ai_enabled" ${aiOn ? 'checked' : ''}><span>Enable AI features</span></label>
         </div>
         <div class="field-row">
-          <label><span>Provider</span><select name="ai_provider">${opts(['claude', 'ollama', 'lmstudio'], s.ai_provider || 'claude', { claude: 'Claude', ollama: 'Ollama', lmstudio: 'LM Studio' })}</select></label>
+          <label><span>Provider</span><select name="ai_provider">${opts(['claude', 'ollama', 'lmstudio'], provider, { claude: 'Claude', ollama: 'Ollama', lmstudio: 'LM Studio' })}</select></label>
         </div>
-        <div class="field-row">
+        <div class="field-row" data-provider="claude" ${provider === 'claude' ? '' : 'hidden'}>
           <label><span>Claude API key ${s.claude_api_key_set ? '<span class="chip">set</span>' : ''}</span>
             <input name="claude_api_key" type="password" value="${s.claude_api_key_set ? SECRET_UNCHANGED : ''}" placeholder="sk-ant-…"></label>
           <label><span>Claude model</span><input name="claude_model" value="${escapeHtml(s.claude_model || 'claude-sonnet-5')}"></label>
         </div>
-        <div class="field-row">
+        <div class="field-row" data-provider="ollama" ${provider === 'ollama' ? '' : 'hidden'}>
           <label><span>Ollama base URL</span><input name="ollama_base_url" value="${escapeHtml(s.ollama_base_url || 'http://localhost:11434')}"></label>
           <label><span>Ollama model</span><input name="ollama_model" value="${escapeHtml(s.ollama_model || 'llama3.1')}"></label>
         </div>
-        <div class="field-row">
+        <div class="field-row" data-provider="lmstudio" ${provider === 'lmstudio' ? '' : 'hidden'}>
           <label><span>LM Studio base URL</span><input name="lmstudio_base_url" value="${escapeHtml(s.lmstudio_base_url || 'http://localhost:1234')}"></label>
           <label><span>LM Studio model</span><input name="lmstudio_model" value="${escapeHtml(s.lmstudio_model)}" placeholder="model id from LM Studio"></label>
           <label><span>LM Studio API key ${s.lmstudio_api_key_set ? '<span class="chip">set</span>' : ''}</span>
@@ -176,6 +177,14 @@ export async function renderSettings(container) {
         void changePassword(pwForm);
     });
     container.querySelector('[data-role="test-ai"]').addEventListener('click', () => testAi(container));
+    // Only the chosen provider's fields show. The others are hidden, not removed,
+    // so their stored values still go out with the form and survive a switch.
+    const providerSelect = container.querySelector('select[name="ai_provider"]');
+    providerSelect.addEventListener('change', () => {
+        container.querySelectorAll('[data-provider]').forEach((row) => {
+            row.hidden = row.dataset.provider !== providerSelect.value;
+        });
+    });
     container.querySelector('[data-role="weekly"]')?.addEventListener('click', () => weeklyReview(container));
     container.querySelector('[data-role="egg"]')?.addEventListener('click', openEasterEgg);
     if (boot.user.role === 'admin') {

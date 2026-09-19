@@ -1,5 +1,5 @@
 /**
- * inphub: dashboard: Google search, a gap-free widget grid, and a shortcuts
+ * inphub: dashboard: Google search (with suggestions, dash-search.ts), a gap-free widget grid, and a shortcuts
  * rail, all stitched from one stats.php?action=dashboard call.
  *
  * Which widgets show, their order and their size come from the user's
@@ -16,6 +16,7 @@ import {
   type DashData, type Shortcut, type WidgetDef,
 } from './widgets.js';
 import { openWidgetPicker } from './widget-picker.js';
+import { mountDashSearch } from './dash-search.js';
 
 let data: DashData | null = null;
 let shortcuts: Shortcut[] = [];
@@ -31,6 +32,10 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
   shortcuts = Array.isArray(d.shortcuts) ? d.shortcuts : [];
   const rerender = () => renderDashboard(container);
 
+  // A background re-render must not wipe a half-typed search.
+  const prevSearch = container.querySelector<HTMLInputElement>('[data-role="search"]');
+  const keepSearch = prevSearch ? { value: prevSearch.value, focused: document.activeElement === prevSearch } : null;
+
   const layout = (Array.isArray(d.layout) ? d.layout : []).filter((l) => isWidgetId(l.id) && widgetAvailable(l.id));
 
   container.innerHTML = `
@@ -38,7 +43,9 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
       <div class="dash-top">
         <form class="dash-search" action="https://www.google.com/search" method="get" target="_self" role="search">
           <span class="dash-search-ico">${icon('search', 18)}</span>
-          <input type="text" name="q" placeholder="Search Google" autocomplete="off" spellcheck="false" data-role="search" aria-label="Search Google">
+          <input type="text" name="q" placeholder="Search Google" autocomplete="off" spellcheck="false" data-role="search" aria-label="Search Google"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="dash-suggest">
+          <div class="dash-suggest palette-list" id="dash-suggest" data-role="suggest" role="listbox" aria-label="Suggestions" hidden></div>
         </form>
         <button class="btn btn-glass btn-icon dash-customize" data-action="customize" title="Customize dashboard" aria-label="Customize dashboard">
           ${icon('customize', 20)}</button>
@@ -60,6 +67,8 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
         </aside>
       </div>
     </div>`;
+
+  mountDashSearch(container, keepSearch);
 
   const grid = container.querySelector<HTMLElement>('[data-role="widgets"]')!;
   masonry(grid);

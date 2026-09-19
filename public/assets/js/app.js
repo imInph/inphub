@@ -6,21 +6,21 @@
  * `render(container)` entry point; we import them all up front (small app, no
  * bundler) and mount the active one into its <section id="view-<id>">.
  */
-import { apiGet, apiPost } from './api.js?v=83d0559b02';
-import { toast, openModal, escapeHtml } from './ui.js?v=83d0559b02';
-import { initChat } from './chat.js?v=83d0559b02';
-import { initPalette, setPaletteChat } from './command-palette.js?v=83d0559b02';
-import { renderDashboard } from './dashboard.js?v=83d0559b02';
-import { renderTodos } from './todos.js?v=83d0559b02';
-import { renderExpenses } from './expenses.js?v=83d0559b02';
-import { renderRepos } from './repos.js?v=83d0559b02';
-import { renderHabits } from './habits.js?v=83d0559b02';
-import { renderGoals } from './goals.js?v=83d0559b02';
-import { renderNotes } from './notes.js?v=83d0559b02';
-import { renderFocus } from './focus.js?v=83d0559b02';
-import { renderInsights } from './insights.js?v=83d0559b02';
-import { renderActivity } from './activity.js?v=83d0559b02';
-import { renderSettings } from './settings.js?v=83d0559b02';
+import { apiGet, apiPost } from './api.js?v=c10f314afe';
+import { toast, openModal, escapeHtml } from './ui.js?v=c10f314afe';
+import { initChat } from './chat.js?v=c10f314afe';
+import { initPalette, setPaletteChat } from './command-palette.js?v=c10f314afe';
+import { renderDashboard } from './dashboard.js?v=c10f314afe';
+import { renderTodos } from './todos.js?v=c10f314afe';
+import { renderExpenses } from './expenses.js?v=c10f314afe';
+import { renderRepos } from './repos.js?v=c10f314afe';
+import { renderHabits } from './habits.js?v=c10f314afe';
+import { renderGoals } from './goals.js?v=c10f314afe';
+import { renderNotes } from './notes.js?v=c10f314afe';
+import { renderFocus } from './focus.js?v=c10f314afe';
+import { renderInsights } from './insights.js?v=c10f314afe';
+import { renderActivity } from './activity.js?v=c10f314afe';
+import { renderSettings } from './settings.js?v=c10f314afe';
 export const boot = window.INPHUB;
 const VIEWS = {
     dashboard: renderDashboard,
@@ -451,7 +451,7 @@ function init() {
     window.__inphubLoaded = true;
     // Deploy sanity stamp: if this line is missing from the console, the browser
     // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-    console.info(`[inphub] v${'3.0.0'} ready`);
+    console.info(`[inphub] v${'3.1.0'} ready`);
 }
 /**
  * The two ambient touches: the title bar turns to glass once content scrolls

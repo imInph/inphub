@@ -2,8 +2,11 @@
  * inphub: command palette (Ctrl/Cmd+K): commands *and* global search.
  *
  * Typing filters the built-in commands locally and, in parallel, searches
- * every entity through api/search.php. Results are grouped under headings and
- * share one arrow/Enter selection with the commands.
+ * every entity through api/search.php and asks Google for suggestions
+ * (api/suggest.php). Results are grouped under headings (Commands → inphub
+ * groups → Google) and share one arrow/Enter selection. The Google group
+ * always opens with a "Search Google for …" row, so with no local match,
+ * typing and pressing Enter searches the web, even when suggestions fail.
  *
  * The box is built once into the persistent #palette node and its listeners
  * are bound once, open() only unhides and resets. Re-binding on every open
@@ -15,6 +18,10 @@ import { go } from './app.js';
 import { openChat } from './chat.js';
 import { apiGet, apiPost } from './api.js';
 import { toast, openModal, formValues, escapeHtml, money } from './ui.js';
+import {
+  RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort,
+  type SearchItem, type SearchGroup,
+} from './web-search.js';
 
 declare global {
   interface Window {
@@ -29,26 +36,14 @@ interface Command {
   run: () => void;
 }
 
-interface SearchItem {
-  id: number;
-  label: string;
-  sub: string;
-  meta: string;
-  amount?: number;
-  currency?: string;
-}
-
-interface SearchGroup {
-  type: string;
-  label: string;
-  items: SearchItem[];
-  truncated: boolean;
-}
-
 /** Selectable row, commands and results share one index space. */
 type Entry =
   | { kind: 'command'; cmd: Command }
-  | { kind: 'result'; type: string; item: SearchItem };
+  | { kind: 'result'; type: string; item: SearchItem }
+  | { kind: 'web'; query: string };
+
+/** Google suggestions shown under the fixed "Search Google for …" row. */
+const WEB_SUGGESTIONS = 4;
 
 const VIEW_COMMANDS: [string, string][] = [
   ['dashboard', 'Dashboard'],
@@ -70,19 +65,6 @@ const VIEW_HINTS: Record<string, string> = {
   goals: 'g g', notes: 'g n', focus: 'g f', insights: 'g i', activity: 'g a', settings: 'g s',
 };
 
-/** Result type → the view that can show it. The client owns route shape. */
-const RESULT_VIEWS: Record<string, string> = {
-  todo: 'todos',
-  expense: 'expenses',
-  note: 'notes',
-  habit: 'habits',
-  goal: 'goals',
-  repo: 'repos',
-};
-
-/** Queries shorter than this are not sent, matches SEARCH_MIN_CHARS server-side. */
-const SEARCH_MIN_CHARS = 2;
-
 let palette: HTMLElement | null = null;
 let input: HTMLInputElement | null = null;
 let listHost: HTMLElement | null = null;
@@ -94,6 +76,7 @@ let chatEnabled = false;
 
 let groups: SearchGroup[] = [];
 let searchedFor = '';
+let suggestions: string[] = [];
 let searchTimer = 0;
 let searchCtl: AbortController | null = null;
 
@@ -195,6 +178,7 @@ function open(): void {
   commands = buildCommands();
   groups = [];
   searchedFor = '';
+  suggestions = [];
   input.value = '';
   palette.hidden = false;
   render('', true);
@@ -222,28 +206,36 @@ function onInput(): void {
   if (q.length < SEARCH_MIN_CHARS) {
     groups = [];
     searchedFor = '';
+    suggestions = [];
     return;
   }
-  searchTimer = window.setTimeout(() => void runSearch(q), 200);
+  searchTimer = window.setTimeout(() => runSearch(q), 200);
 }
 
-async function runSearch(q: string): Promise<void> {
+/** inphub results and Google suggestions, in parallel; each renders on arrival. */
+function runSearch(q: string): void {
   const ctl = new AbortController();
   searchCtl = ctl;
-  try {
-    const res = await apiGet<{ groups: SearchGroup[] }>('search', 'search', { q }, { signal: ctl.signal });
-    // A newer keystroke may have superseded this request.
-    if (ctl !== searchCtl || input!.value.trim() !== q) return;
-    groups = res.groups;
-    searchedFor = q;
-    render(q, false);
-  } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') return;
-    // Search failing must never break the command palette.
-    groups = [];
-    searchedFor = q;
-    render(q, false);
-  }
+  // A newer keystroke may have superseded this request.
+  const current = () => ctl === searchCtl && input!.value.trim() === q;
+
+  apiGet<{ groups: SearchGroup[] }>('search', 'search', { q }, { signal: ctl.signal })
+    .then((res) => res.groups, (e) => (isAbort(e) ? null : []))
+    .then((res) => {
+      // Search failing must never break the command palette.
+      if (res === null || !current()) return;
+      groups = res;
+      searchedFor = q;
+      render(q, false);
+    });
+
+  fetchSuggestions(q, ctl.signal)
+    .catch((e) => (isAbort(e) ? null : []))
+    .then((res) => {
+      if (res === null || !current()) return;
+      suggestions = res.filter((s) => s.trim().toLocaleLowerCase() !== q.toLocaleLowerCase()).slice(0, WEB_SUGGESTIONS);
+      render(q, false);
+    });
 }
 
 /* ------------------------------------------------------------------ render */
@@ -285,6 +277,17 @@ function render(query: string, resetActive: boolean): void {
     }
   }
 
+  if (q) {
+    html.push(section('Google'));
+    html.push(row(entries.length, `Search Google for “${escapeHtml(q)}”`, '', ''));
+    entries.push({ kind: 'web', query: q });
+    for (const s of suggestions) {
+      // Wrapped: .palette-label is a column flexbox and would stack the two halves.
+      html.push(row(entries.length, `<span>${suggestionHtml(q, s)}</span>`, '', ''));
+      entries.push({ kind: 'web', query: s });
+    }
+  }
+
   if (!entries.length) {
     const searching = q.length >= SEARCH_MIN_CHARS && searchedFor !== q;
     html.push(`<div class="palette-item text-dim">${searching ? 'Searching…' : 'No matches'}</div>`);
@@ -317,6 +320,7 @@ function sameEntry(a: Entry, b: Entry): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'command' && b.kind === 'command') return a.cmd.label === b.cmd.label;
   if (a.kind === 'result' && b.kind === 'result') return a.type === b.type && a.item.id === b.item.id;
+  if (a.kind === 'web' && b.kind === 'web') return a.query === b.query;
   return false;
 }
 
@@ -357,6 +361,10 @@ function choose(i: number): void {
   close();
   if (entry.kind === 'command') {
     entry.cmd.run();
+    return;
+  }
+  if (entry.kind === 'web') {
+    searchGoogle(entry.query);
     return;
   }
   // Routing through go() keeps view validation in one place, a result can

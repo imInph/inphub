@@ -200,6 +200,17 @@ reshuffle between keystrokes. The collation (`utf8mb4_unicode_ci`) already match
 `istanbul` ↔ `ıstanbul`, do not "fix" it to `utf8mb4_turkish_ci`, and never re-filter results
 client-side, since JS `toLowerCase()` gets Turkish wrong where the DB gets it right.
 
+### Google suggestions (`api/suggest.php` + `src/web-search.ts`)
+The dashboard bar (`src/dash-search.ts`: a Google group, then "In inphub" from search.php) and
+the palette's Google group both use `fetchSuggestions()` in `web-search.ts`, which also holds the
+shared `RESULT_VIEWS` / search types. Suggestions are proxied server-side because Google's suggest
+endpoint sends no CORS headers. A slow or failing Google is **never** an error: the endpoint answers
+`ok(['items' => []])` and the UI just shows fewer rows, so keep its short cURL timeouts.
+
+**Entry animations on containers use fill mode `backwards`, never `both`** (`.view`, dashboard
+widgets): a filled opacity/transform animation keeps the element isolated after it ends, so
+`backdrop-filter` on any glass inside it stops at that ancestor and blurs nothing behind the view.
+
 ### Insights (`api/insights.php` + `src/insights.ts`)
 One `?action=summary&period=` call feeds the whole view; nothing is stored. It reuses
 `money_window()`, the name is historical, the maths is generic, so Insights and Money share one
