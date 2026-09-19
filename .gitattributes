@@ -1,0 +1,5 @@
+# GitHub language stats: the compiled JS is tsc output of src/*.ts and the
+# vendor folder holds third-party libraries. Both stay committed (the app
+# needs them to run from a plain download) but are not counted as source.
+public/assets/js/** linguist-generated=true
+public/assets/vendor/** linguist-vendored=true
