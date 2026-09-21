@@ -1,9 +1,9 @@
 /**
  * inphub: todos: quick-add, filterable list, inline complete/edit/delete.
  */
-import { apiGet, apiPost } from './api.js?v=5068af101e';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=5068af101e';
-import { currentParams } from './app.js?v=5068af101e';
+import { apiGet, apiPost } from './api.js?v=42714d0ded';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=42714d0ded';
+import { currentParams } from './app.js?v=42714d0ded';
 const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 let filterStatus = 'open';

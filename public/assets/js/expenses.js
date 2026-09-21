@@ -7,10 +7,10 @@
  * does not reset on the 1st) and Budgets are always the current calendar month
  * (a monthly_budget only means anything against a month).
  */
-import { apiGet, apiPost } from './api.js?v=5068af101e';
-import { escapeHtml, money, fmtDate, fmtMonth, todayStr, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=5068af101e';
-import { currentParams } from './app.js?v=5068af101e';
-import { opts } from './todos.js?v=5068af101e';
+import { apiGet, apiPost } from './api.js?v=42714d0ded';
+import { escapeHtml, money, fmtDate, fmtMonth, todayStr, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=42714d0ded';
+import { currentParams } from './app.js?v=42714d0ded';
+import { opts } from './todos.js?v=42714d0ded';
 /** Selectable windows, server-side keys in lib/helpers.php MONEY_PERIODS. */
 const PERIODS = [
     ['month', 'This month'],

@@ -13,11 +13,11 @@
  * (as an earlier version did) stacks handlers on a node that is never
  * replaced; see the onAction() note in CLAUDE.md for the same hazard.
  */
-import { go } from './app.js?v=5068af101e';
-import { openChat } from './chat.js?v=5068af101e';
-import { apiGet, apiPost } from './api.js?v=5068af101e';
-import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=5068af101e';
-import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=5068af101e';
+import { go } from './app.js?v=42714d0ded';
+import { openChat } from './chat.js?v=42714d0ded';
+import { apiGet, apiPost } from './api.js?v=42714d0ded';
+import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=42714d0ded';
+import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=42714d0ded';
 /** Google suggestions shown under the fixed "Search Google for …" row. */
 const WEB_SUGGESTIONS = 4;
 const VIEW_COMMANDS = [

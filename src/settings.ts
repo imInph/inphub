@@ -168,11 +168,16 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
     </section>
 
     <section class="card" style="margin-top:16px">
-      <div class="card-head"><h3>Data</h3></div>
+      <div class="card-head"><h3>Data</h3>
+        <span class="text-dim" style="font-size:.82rem">Backups move between inphub and inphub lite.</span></div>
       <div class="toolbar">
-        <a class="btn" href="../api/export.php?action=json">Export all (JSON)</a>
-        <a class="btn" href="../api/export.php?action=expenses_csv">Expenses (CSV)</a>
+        <a class="btn" href="../api/export.php?action=backup">Export / back up…</a>
+        <button class="btn" data-role="import">Import…</button>
+        <a class="btn btn-ghost" href="../api/export.php?action=expenses_csv">Expenses (CSV)</a>
       </div>
+      <div class="text-dim" style="margin-top:8px;font-size:.82rem">
+        One .txt file with everything in this account, minus your API keys.
+        Import reads backups from inphub and from inphub lite.</div>
     </section>
 
     ${aiAvailable ? `<section class="card" style="margin-top:16px">
@@ -211,6 +216,7 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
   });
 
   container.querySelector<HTMLButtonElement>('[data-role="weekly"]')?.addEventListener('click', () => weeklyReview(container));
+  container.querySelector<HTMLButtonElement>('[data-role="import"]')?.addEventListener('click', () => openImport(container));
 
   container.querySelector<HTMLButtonElement>('[data-role="egg"]')?.addEventListener('click', openEasterEgg);
 
@@ -436,5 +442,108 @@ function wireAppearance(form: HTMLFormElement): void {
       if (thumb) thumb.style.backgroundImage = /^https?:\/\//i.test(url) ? cssUrl(url) : '';
       preview();
     }, 350);
+  });
+}
+
+/* --------------------------------------------------------------- import */
+
+/**
+ * Restore a backup, or pull one across from inphub lite.
+ *
+ * Two steps on purpose. The file is parsed and checked by ?action=inspect
+ * first, which writes nothing, and the counts it reports are what you confirm
+ * against. Only then does ?action=apply run, in one transaction.
+ *
+ * Replace is offered first because it is what "restore my backup" means, and it
+ * is the only mode that keeps ids, so anything pointing at a row by id still
+ * points at it afterwards. Merge never trusts an incoming id.
+ */
+function openImport(container: HTMLElement): void {
+  const backdrop = openModal({
+    title: 'Import a backup',
+    confirmLabel: '',
+    cancelLabel: 'Close',
+    bodyHtml: `
+      <p class="text-dim" style="margin-top:0">
+        A <code>.txt</code> backup written by inphub or by inphub lite.</p>
+      <label><span>Backup file</span>
+        <input type="file" data-role="file" accept=".txt,.json,text/plain,application/json"></label>
+      <div data-role="report" class="text-dim" style="margin-top:12px;font-size:.85rem"></div>
+      <div data-role="choices" hidden style="margin-top:14px">
+        <label><span>How</span>
+          <select data-role="mode">
+            <option value="replace">Replace everything in this account</option>
+            <option value="merge">Merge into what is already here</option>
+          </select></label>
+        <div class="text-dim" style="margin-top:6px;font-size:.82rem" data-role="mode-note"></div>
+        <button class="btn btn-primary" data-role="go" style="margin-top:12px">Import</button>
+      </div>`,
+  });
+
+  const $ = <T extends HTMLElement>(role: string) => backdrop.querySelector<T>(`[data-role="${role}"]`);
+  const report = $('report')!;
+  const choices = $('choices')!;
+  const modeSel = $<HTMLSelectElement>('mode')!;
+  const note = $('mode-note')!;
+  let text = '';
+
+  const describeMode = () => {
+    note.textContent = modeSel.value === 'replace'
+      ? 'Everything currently in this account is deleted first, then the backup is written with its original ids.'
+      : 'Nothing is deleted. Rows come in with new ids, and a category or repo that already exists is reused.';
+  };
+  modeSel.addEventListener('change', describeMode);
+  describeMode();
+
+  $<HTMLInputElement>('file')!.addEventListener('change', async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    choices.hidden = true;
+    report.textContent = 'Reading…';
+    try {
+      text = await file.text();
+      const res = await apiPost<{
+        counts: Record<string, number>;
+        warnings: string[];
+        meta: { app: string; app_version: string; exported_at: string };
+      }>('import', 'inspect', { file: text });
+
+      const rows = Object.entries(res.counts).filter(([, n]) => n > 0);
+      const total = rows.reduce((n, [, c]) => n + c, 0);
+      report.innerHTML = `
+        <div>From <strong>${escapeHtml(res.meta.app)}</strong>
+          ${escapeHtml(res.meta.app_version ? 'v' + res.meta.app_version : '')}
+          ${res.meta.exported_at ? ', exported ' + escapeHtml(fmtDate(res.meta.exported_at.slice(0, 10))) : ''}.</div>
+        <div style="margin-top:6px">${total} rows: ${
+          rows.map(([t, n]) => `${escapeHtml(t.replace(/_/g, ' '))} ${n}`).join(' · ')}</div>
+        ${res.warnings.length ? `<div class="text-warn" style="margin-top:8px">${
+          res.warnings.map((w) => escapeHtml(w)).join('<br>')}</div>` : ''}`;
+      choices.hidden = false;
+    } catch (err) {
+      text = '';
+      report.textContent = err instanceof Error ? err.message : 'Could not read that file.';
+    }
+  });
+
+  $<HTMLButtonElement>('go')!.addEventListener('click', async () => {
+    if (!text) return;
+    const btn = $<HTMLButtonElement>('go')!;
+    btn.disabled = true;
+    btn.textContent = 'Importing…';
+    try {
+      const res = await apiPost<{ written: Record<string, number> }>('import', 'apply', {
+        file: text, mode: modeSel.value,
+      });
+      const total = Object.values(res.written).reduce((n, c) => n + c, 0);
+      backdrop.remove();
+      toast(`Imported ${total} rows.`, 'good');
+      // Everything on screen is now stale, including this view.
+      window.dispatchEvent(new CustomEvent('inphub:data-changed'));
+      renderSettings(container);
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Import';
+      toast(err instanceof Error ? err.message : 'Import failed.', 'bad');
+    }
   });
 }

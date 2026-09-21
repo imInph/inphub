@@ -1,6 +1,6 @@
 # inphub
 
-v3.1.1, MIT licensed.
+v3.2.0, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I

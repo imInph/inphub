@@ -174,6 +174,24 @@ Repo AI analysis is cached: within `AI_ANALYZE_COOLDOWN_HOURS` it serves
 existing `repo_suggestions` (freshness derived from `MAX(created_at)`, no schema column), and a
 garbled model reply must never delete previous suggestions.
 
+### Backup / restore (`lib/backup.php`, `api/import.php`, `api/export.php`)
+`BACKUP-FORMAT.md` is the contract, and **an identical copy lives in the inphub-lite
+repo**. Both apps read and write the same `.txt`, so a change here without the matching
+change there breaks the migration path in one direction only, which is the hardest kind
+to notice. Bump `format_version` when the shape changes.
+
+All the parsing, validating and shape conversion is in `lib/backup.php`, not the
+endpoint, so `php tools/backup-selftest.php` can exercise it with no web server and no
+database. Run it after touching either side. `api/import.php` is only the part that
+writes: one transaction, children deleted before parents on a replace, parents inserted
+before children always.
+
+The conversions exist because PDO (`EMULATE_PREPARES => false`) returns `DECIMAL` and
+often `INT` as **strings** and MySQL writes datetimes with a space. The file uses JSON
+numbers and `YYYY-MM-DDTHH:mm:ss`. Mixing the two datetime forms in one table breaks
+`ORDER BY created_at` outright, because a space is `0x20` and a `T` is `0x54`.
+`github_token`, `claude_api_key` and `lmstudio_api_key` are never written to a file.
+
 ### Activity log
 `log_activity(...)` in `lib/activity.php` records meaningful mutations (actor `user`/`ai`/`system`).
 The dashboard, daily brief, and weekly review read from this timeline.

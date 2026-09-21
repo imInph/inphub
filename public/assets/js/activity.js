@@ -2,9 +2,9 @@
  * inphub: activity history: a filterable timeline that links through to the
  * thing each row is about.
  */
-import { apiGet } from './api.js?v=5068af101e';
-import { escapeHtml, timeAgo, fmtDate, emptyState, onAction, loadingState } from './ui.js?v=5068af101e';
-import { go } from './app.js?v=5068af101e';
+import { apiGet } from './api.js?v=42714d0ded';
+import { escapeHtml, timeAgo, fmtDate, emptyState, onAction, loadingState } from './ui.js?v=42714d0ded';
+import { go } from './app.js?v=42714d0ded';
 /**
  * Entity types that have somewhere to go. `log_activity` also writes `user`
  * (admin actions) and `brief` (AI output), which have no per-row destination,
