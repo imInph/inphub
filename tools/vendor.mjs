@@ -3,11 +3,11 @@
  *
  * The markdown renderer (markdown() in src/ui.ts) uses marked, its footnote
  * extension, and DOMPurify as plain globals, loaded by <script defer> tags in
- * public/index.php, the same way Chart.js is. The copies are committed so a
+ * server/Pages/Index.cshtml, the same way Chart.js is. The copies are committed so a
  * GitHub download runs with no Node and no CDN.
  *
  * Run after changing their versions in package.json:  npm install && npm run vendor
- * then update the file names in public/index.php (the version is in the name).
+ * then update the file names in server/Pages/Index.cshtml (the version is in the name).
  */
 
 import { copyFileSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';

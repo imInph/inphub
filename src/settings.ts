@@ -22,14 +22,14 @@ interface SettingsPayload {
   ui_accent: string; ui_wallpaper: string; ui_wallpaper_url: string; ui_transparency: string; ui_logo_tint: string;
 }
 
-/** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
+/** Accent presets with their dark-theme swatch colour (Appearance.Accents in server/Core/Appearance.cs). */
 const ACCENTS: [string, string, string][] = [
   ['blue', 'Blue', '#3d8bff'], ['indigo', 'Indigo', '#7a78ff'], ['purple', 'Purple', '#bf5af2'],
   ['pink', 'Pink', '#ff5ea8'], ['red', 'Red', '#ff5a5f'], ['orange', 'Orange', '#ff9f0a'],
   ['green', 'Green', '#30d158'], ['teal', 'Teal', '#40c8e0'], ['graphite', 'Graphite', '#9aa0ab'],
 ];
 
-/** Wallpaper presets (UI_WALLPAPERS in lib/helpers.php). */
+/** Wallpaper presets (Appearance.Wallpapers in server/Core/Appearance.cs). */
 const WALLPAPERS: [string, string][] = [
   ['aurora', 'Aurora'], ['sunset', 'Sunset'], ['ocean', 'Ocean'], ['forest', 'Forest'],
   ['graphite', 'Graphite'], ['plain', 'Plain'], ['custom', 'Custom'],
@@ -342,7 +342,7 @@ async function renderAdmin(container: HTMLElement): Promise<void> {
             </tr>`).join('')}</tbody>
         </table>
         <p class="text-dim" style="margin-top:10px">New accounts are added by hand. Hash a password with
-          <code>php tools/hashpw.php "pw"</code> and insert a <code>users</code> row.</p>
+          <code>cd server &amp;&amp; dotnet run -- hashpw "pw"</code> and insert a <code>users</code> row.</p>
       </section>`;
 
     host.querySelectorAll<HTMLButtonElement>('[data-uid]').forEach((btn) => {

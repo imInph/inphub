@@ -1,20 +1,19 @@
 # inphub
 
-v4.0.0, MIT licensed.
+v4.1.0, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
 changed. There's an optional AI chat on top of it (Claude, or Ollama / LM Studio
 running locally) but it's off by default and everything works without it.
 
-Since v4 the backend is ASP.NET Core (C#, .NET 10) and MySQL, written plainly:
-minimal APIs and SQL through Dapper, no Entity Framework. The frontend is still
-TypeScript compiled to plain ES modules. No React, no bundler. It runs on my own
-machine, not on a server.
+The backend is ASP.NET Core (C#, .NET 10) and MySQL, written plainly: minimal
+APIs and SQL written out by hand over plain ADO.NET, no Entity Framework, no
+Dapper. The frontend is TypeScript compiled to plain ES modules. No React, no
+bundler. It runs on my own machine, not on a server.
 
-v4 is a halfway point. The AI chat and the backup/import (the format shared with
-inphub lite) are still the old PHP code, running on XAMPP. The C# server forwards
-those requests to it. v4.1 moves them over too and then XAMPP isn't needed.
+It used to be PHP. v4.0 moved most of it to C# and v4.1 moved the rest (the AI
+chat and the backup format), so there's no PHP left and no need for Apache.
 
 Some stuff you might want to know if you look around:
 
@@ -43,8 +42,7 @@ Some stuff you might want to know if you look around:
 
 - The .NET 10 SDK (`brew install --cask dotnet-sdk` on a Mac).
 - MySQL or MariaDB.
-- For now, PHP 8.2+ with PDO MySQL, cURL and mbstring, for the AI and backup
-  parts. XAMPP gives you all of that plus MySQL.
+  XAMPP's MySQL works fine, you just don't need its Apache or PHP any more.
 - Node 18+, but only if you change the TypeScript. The compiled JS is already in
   the repo, so you don't need it just to run the app.
 
@@ -54,28 +52,17 @@ Some stuff you might want to know if you look around:
 # 1. Database. This also creates the admin user with password "changeme".
 mysql -u root < inphub.sql
 
-# 2. Config for the C# server: DB credentials, where the PHP part lives, and a
-#    shared key so the PHP part knows requests really come from the server.
+# 2. Config. DB credentials; the defaults work on a stock XAMPP MySQL, so you
+#    can also skip this and live with the defaults.
 cp server/appsettings.Local.example.json server/appsettings.Local.json
 
-# 3. Config for the PHP part (AI + backup). Put the same key in bridge_key.
-cp config/config.example.php config/config.php
-
-# 4. Frontend. Only if you're editing src/, the built JS is already there.
+# 3. Frontend. Only if you're editing src/, the built JS is already there.
 npm install
 npm run build        # or npm run watch while you're editing
 
-# 5. Start it.
+# 4. Start it.
 cd server && dotnet run
 ```
-
-Any long random string works as the key, `openssl rand -hex 32` makes one. Leave
-it empty and everything works except the AI and backup, which answer with an
-error saying the bridge isn't set up.
-
-The PHP part needs the folder to be inside XAMPP's `htdocs` (as `inphub/`, or
-change `PhpApiUrl`). The simplest setup is to keep the whole thing there and run
-`dotnet run` from inside it.
 
 Then go to http://localhost:5080 and log in as `admin` / `changeme`.
 Change that password straight away, it's written down in this file.
@@ -97,11 +84,13 @@ and commit what it outputs along with your change.
 Settings, then the Password box. Needs the current one, and a new one of 8
 characters or more. Other devices you stayed logged in on get signed out.
 
-## Existing logins after upgrading to v4
+## Upgrading from v3 (PHP)
 
-The C# server has its own session and remember-me cookies, so after upgrading you
-log in once more. Passwords don't change: the PHP bcrypt hashes work as they are,
-and new ones the server writes work in PHP too.
+The database doesn't change, so point the server at the one you already have. You
+log in once more, because the session and remember-me cookies are new, but
+passwords stay the same: the old PHP bcrypt hashes work as they are. Your old
+`config/config.php` isn't read any more. If you had `developer_user` in it, move
+it to `DeveloperUser` in `server/appsettings.Local.json`.
 
 ## Upgrading an older copy
 
@@ -122,7 +111,7 @@ and shouldn't run it.
 There's no sign-up page. You hash a password and insert a row yourself:
 
 ```bash
-php tools/hashpw.php "theirPassword"
+cd server && dotnet run -- hashpw "theirPassword"
 ```
 
 ```sql
@@ -161,9 +150,9 @@ different JSON shapes because they don't all format it the same way. Thinking
 models work too, the thinking part just gets thrown away and the app only reads
 the actual answer.
 
-If you want the chat's developer mode for your own account, add
-`'developer_user' => 'yourname'` to `config/config.php`. Empty means nobody gets
-it, which is the default.
+If you want the chat's developer mode for your own account, set `DeveloperUser`
+to your username in `server/appsettings.Local.json`. Empty means nobody gets it,
+which is the default.
 
 ## Commands
 
@@ -174,28 +163,27 @@ it, which is the default.
 | `npm run vendor` | Copies marked, DOMPurify and the footnote plugin into `public/assets/vendor/`. Only needed if you update them |
 | `cd server && dotnet run` | Starts the server on http://localhost:5080 |
 | `cd server && dotnet build` | Compiles the server, the closest thing to a test run |
-| `php -l <file>` | Syntax-checks one of the PHP files that are left |
-| `php tools/hashpw.php "pw"` | Prints a bcrypt hash for a new user |
+| `cd server && dotnet run -- hashpw "pw"` | Prints a bcrypt hash for a new user |
+| `cd server && dotnet run -- backup-selftest` | Checks the backup format against itself, no database needed |
+| `cd server && dotnet run -- backup-dbtest` | Checks importing against a throwaway `inphub_import_test` database (it refuses any other one) |
 
 ## Layout
 
 ```
 server/   the ASP.NET server
-  Core/       database, request handling, settings, money, appearance, the PHP bridge
+  Core/       database, request handling, settings, money, appearance
   Auth/       login, remember-me, first-login defaults
-  Endpoints/  one file per area (Todos.cs, Expenses.cs, Stats.cs, ...)
-  Services/   GitHub
+  Endpoints/  one file per area (Todos.cs, Expenses.cs, AiApi.cs, ...)
+  Services/   AI (providers, chat, chat actions, brief), backup, GitHub
+  Tools/      the command-line modes: hashpw and the backup tests
   Pages/      the app shell and the login page (Razor)
 public/   web root: css, icons, compiled JS, vendored libraries
 src/      TypeScript source
-api/      the PHP that's left: ai.php, import.php, export.php (backup only)
-lib/      shared PHP for those: ai, backup, helpers, auth (bridge check only)
-config/   PHP config (config.php is git-ignored)
-db/       PDO connection and the dated migration files
-tools/    hashpw, the build-id stamper, the vendor copy script, backup tests
+db/       the dated migration files
+tools/    the build-id stamper and the vendor copy script
 ```
 
-Every `/api/*` endpoint (C# or PHP) replies with the same envelope, `{ "ok": true, "data": ... }`
+Every `/api/*` endpoint replies with the same envelope, `{ "ok": true, "data": ... }`
 or `{ "ok": false, "error": "..." }`, and every query is filtered by the logged-in
 user's id.
 
@@ -203,8 +191,6 @@ user's id.
 
 - Passwords are bcrypt. Sessions are cookies, with a remember-me token that's
   stored hashed and rotated each time it's used.
-- The PHP part only trusts a request that comes from this machine and carries the
-  shared key, so it can't be used on its own.
 - Queries use prepared statements, so user input never gets concatenated into SQL.
 - The GitHub token and AI API keys are per-user, kept in the database, shown in
   password fields and masked when read back.
@@ -213,13 +199,14 @@ user's id.
   built from the video id, not from whatever the link says.
 
 This is meant for localhost and I haven't hardened it for the internet. There's
-no rate limiting on the login form and no CSRF tokens. Because the folder sits
-inside `htdocs`, files outside `public/` (`inphub.sql`, `db/*.sql`,
-`tools/hashpw.php`) can be fetched over HTTP from XAMPP unless you block them.
-`server/` is blocked by its own `.htaccess`, because `appsettings.Local.json` is
-plain JSON with the DB password and the bridge key in it. Don't put it on a public server as it is.
+no rate limiting on the login form and no CSRF tokens on the API. The server only
+serves `public/`, but if you still keep the folder inside XAMPP's `htdocs`, Apache
+will happily serve `inphub.sql` and friends, so don't. (`server/` has an
+`.htaccess` that blocks it, because `appsettings.Local.json` holds the DB
+password.) Don't put it on a public server as it is.
 
-There are no automated tests. I check things by hand against the running app.
+There's no test framework. Apart from the two backup checks above, I check things
+by hand against the running app.
 
 ## License
 

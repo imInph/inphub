@@ -1,7 +1,7 @@
 /**
  * inphub: line icons for the TS-rendered UI (widgets, Customize sheet).
  *
- * Same 24px grid and stroke as the nav icons in public/index.php, stroked with
+ * Same 24px grid and stroke as the nav icons in server/Pages/Index.cshtml.cs, stroked with
  * currentColor so they follow whatever colour their container sets.
  */
 const PATHS = {

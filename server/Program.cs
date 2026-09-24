@@ -1,6 +1,8 @@
 using Inphub.Auth;
 using Inphub.Core;
 using Inphub.Endpoints;
+using Inphub.Services;
+using Inphub.Tools;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
@@ -15,8 +17,10 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 builder.Configuration.AddEnvironmentVariables();
 
+var toolExit = Cli.Run(args, builder.Configuration);
+if (toolExit != null) return toolExit.Value;
+
 builder.Services.AddRazorPages();
-builder.Services.AddHttpForwarder();
 builder.Services.AddHttpClient();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -29,6 +33,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 var app = builder.Build();
 Db.Configure(app.Configuration);
+Chat.DeveloperUser = (app.Configuration["Inphub:DeveloperUser"] ?? "").Trim();
 
 app.UseStaticFiles();
 app.UseAuthentication();
@@ -66,9 +71,11 @@ Insights.Map(app);
 Search.Map(app);
 Suggest.Map(app);
 Export.Map(app);
-PhpBridge.Map(app);
+Import.Map(app);
+AiApi.Map(app);
 
 app.Run();
+return 0;
 
 // Walks up from the build output to the folder that holds public/assets.
 static string FindRepoRoot()

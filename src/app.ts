@@ -24,7 +24,7 @@ import { renderInsights } from './insights.js';
 import { renderActivity } from './activity.js';
 import { renderSettings } from './settings.js';
 
-/** Wallpaper, accent, transparency and logo tint, mirrors ui_appearance() in lib/helpers.php. */
+/** Wallpaper, accent, transparency and logo tint, mirrors Appearance.For() in server/Core/Appearance.cs. */
 export interface Appearance {
   accent: string;
   wallpaper: string;
@@ -34,7 +34,7 @@ export interface Appearance {
   logo_tint: string;
 }
 
-/** The bootstrap payload injected by index.php. */
+/** The bootstrap payload injected by server/Pages/Index.cshtml. */
 export interface BootData {
   user: { id: number; username: string; display_name: string | null; role: string };
   theme: string;
@@ -44,11 +44,11 @@ export interface BootData {
 declare global {
   interface Window {
     INPHUB: BootData;
-    /** Called by inline onclick in index.php (see init for why). */
+    /** Called by inline onclick in Pages/Index.cshtml (see init for why). */
     inphubToggleTheme?: () => void;
-    /** Called by inline onclick in index.php; no arg = toggle. */
+    /** Called by inline onclick in Pages/Index.cshtml; no arg = toggle. */
     inphubDrawer?: (open?: boolean) => void;
-    /** Set once the shell boots; index.php's error guard checks it. */
+    /** Set once the shell boots; the index page's error guard checks it. */
     __inphubLoaded?: boolean;
   }
 }
@@ -217,14 +217,14 @@ export function applyTheme(theme: string, remember = true): void {
   }
 }
 
-/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (css_url() in PHP). */
+/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (Appearance.CssUrl() in C#). */
 export function cssUrl(url: string): string {
   return `url("${url.replace(/[\\"'()\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))}")`;
 }
 
 /**
  * Apply accent, wallpaper and transparency to <html> and cache them for the
- * pre-paint scripts in index.php / login.php.
+ * pre-paint scripts in the Index and Login pages.
  */
 export function applyAppearance(a: Appearance, remember = true): void {
   const root = document.documentElement;
@@ -470,7 +470,7 @@ function init(): void {
   };
 
   // The theme button, hamburger, and drawer backdrop are wired through inline
-  // onclick attributes in index.php that call these globals. This is DOM
+  // onclick attributes in Pages/Index.cshtml that call these globals. This is DOM
   // level-0 on purpose: in the owner's environment BOTH direct addEventListener
   // bindings and a document-level delegated listener silently never fired for
   // these buttons (likely an extension wrapping addEventListener), while inline
@@ -510,13 +510,13 @@ function init(): void {
   // AI is optional: only wire chat + reveal its button once we know it's configured.
   setupAi();
 
-  // Tells index.php's error guard that the module graph linked and ran, so the
+  // Tells the index page's error guard that the module graph linked and ran, so the
   // "hard-reload" banner only appears for a genuine boot failure.
   window.__inphubLoaded = true;
 
   // Deploy sanity stamp: if this line is missing from the console, the browser
   // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-  console.info(`[inphub] v${'4.0.0'} ready`);
+  console.info(`[inphub] v${'4.1.0'} ready`);
 }
 
 /**

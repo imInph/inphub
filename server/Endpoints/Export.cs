@@ -3,7 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using Inphub.Auth;
 using Inphub.Core;
-using Yarp.ReverseProxy.Forwarder;
+using Inphub.Services;
 
 namespace Inphub.Endpoints;
 
@@ -11,12 +11,12 @@ public static class Export
 {
     static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true, IndentSize = 4, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    // GET /api/export: file downloads. The backup format is still PHP's (shared with inphub lite), so it is forwarded.
+    // GET /api/export: file downloads (backup, expenses CSV, to-dos as CSV/JSON/Markdown).
     public static void Map(WebApplication app) =>
         app.MapGet("/api/export", Run);
 
-    // Picks the export by ?action=; not signed in means a trip to the login page.
-    static async Task<IResult> Run(HttpContext ctx, IHttpForwarder forwarder)
+    // Picks the export by ?action=; not signed in means a trip to the login page. Anything unknown is a backup.
+    static IResult Run(HttpContext ctx)
     {
         var uid = ctx.UserId();
         if (uid == 0) return Results.Redirect("/login");
@@ -27,7 +27,7 @@ public static class Export
 
         if (action == "expenses_csv") return ExpensesCsv(uid, stamp);
         if (action.StartsWith("todos_")) return TodosExport(uid, action, stamp);
-        return await PhpBridge.Forward(ctx, forwarder, "export.php");
+        return Download(Backup.ToFileText(Backup.Build(uid)), "text/plain; charset=utf-8", Backup.FileName());
     }
 
     // The expenses ledger as CSV.

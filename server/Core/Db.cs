@@ -1,6 +1,5 @@
 using System.Data;
 using System.Globalization;
-using Dapper;
 using MySqlConnector;
 
 namespace Inphub.Core;
@@ -33,51 +32,95 @@ public static class Db
         return conn;
     }
 
+    // Opens a connection and starts a transaction on it; dispose the connection when done.
+    public static MySqlTransaction Begin() => Open().BeginTransaction();
+
     // Runs a query and returns every row as a column => value map, formatted like PHP returned it.
-    public static List<Dictionary<string, object?>> Rows(string sql, object? args = null)
+    public static List<Dictionary<string, object?>> Rows(string sql, object? args = null, MySqlTransaction? tx = null)
     {
-        using var conn = Open();
-        using var reader = conn.ExecuteReader(sql, args);
-        var rows = new List<Dictionary<string, object?>>();
-        while (reader.Read())
+        return Use(tx, conn =>
         {
-            var row = new Dictionary<string, object?>();
-            for (var i = 0; i < reader.FieldCount; i++)
+            using var cmd = Command(conn, tx, sql, args);
+            using var reader = cmd.ExecuteReader();
+            var rows = new List<Dictionary<string, object?>>();
+            while (reader.Read())
             {
-                row[reader.GetName(i)] = Clean(reader, i);
+                var row = new Dictionary<string, object?>();
+                for (var i = 0; i < reader.FieldCount; i++)
+                {
+                    row[reader.GetName(i)] = Clean(reader, i);
+                }
+                rows.Add(row);
             }
-            rows.Add(row);
-        }
-        return rows;
+            return rows;
+        });
     }
 
     // Runs a query and returns the first row, or null.
-    public static Dictionary<string, object?>? Row(string sql, object? args = null)
+    public static Dictionary<string, object?>? Row(string sql, object? args = null, MySqlTransaction? tx = null)
     {
-        var rows = Rows(sql, args);
+        var rows = Rows(sql, args, tx);
         return rows.Count > 0 ? rows[0] : null;
     }
 
-    // Runs a query and returns the first column of the first row.
-    public static T? Scalar<T>(string sql, object? args = null)
+    // Runs a query and returns the first column of the first row, converted to T (default when NULL).
+    public static T? Scalar<T>(string sql, object? args = null, MySqlTransaction? tx = null)
     {
-        using var conn = Open();
-        return conn.ExecuteScalar<T>(sql, args);
+        var value = Use(tx, conn =>
+        {
+            using var cmd = Command(conn, tx, sql, args);
+            return cmd.ExecuteScalar();
+        });
+        if (value == null || value is DBNull) return default;
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (target == typeof(object) || target.IsInstanceOfType(value)) return (T)value;
+        return (T)Convert.ChangeType(value, target, CultureInfo.InvariantCulture);
     }
 
     // Runs a statement and returns the number of affected rows.
-    public static int Execute(string sql, object? args = null)
+    public static int Execute(string sql, object? args = null, MySqlTransaction? tx = null)
     {
-        using var conn = Open();
-        return conn.Execute(sql, args);
+        return Use(tx, conn =>
+        {
+            using var cmd = Command(conn, tx, sql, args);
+            return cmd.ExecuteNonQuery();
+        });
     }
 
     // Runs an INSERT and returns the new row id.
-    public static int Insert(string sql, object? args = null)
+    public static int Insert(string sql, object? args = null, MySqlTransaction? tx = null)
     {
+        return Use(tx, conn =>
+        {
+            using var cmd = Command(conn, tx, sql, args);
+            cmd.ExecuteNonQuery();
+            return (int)cmd.LastInsertedId;
+        });
+    }
+
+    // Runs work on the transaction's connection, or on a fresh one that is closed afterwards.
+    static T Use<T>(MySqlTransaction? tx, Func<MySqlConnection, T> work)
+    {
+        if (tx != null) return work(tx.Connection!);
         using var conn = Open();
-        conn.Execute(sql, args);
-        return conn.ExecuteScalar<int>("SELECT LAST_INSERT_ID()");
+        return work(conn);
+    }
+
+    // A command with one @parameter per property of args (new { uid, title } => @uid, @title), or per key of a dictionary.
+    static MySqlCommand Command(MySqlConnection conn, MySqlTransaction? tx, string sql, object? args)
+    {
+        var cmd = new MySqlCommand(sql, conn, tx);
+        if (args == null) return cmd;
+        if (args is IDictionary<string, object?> dict)
+        {
+            foreach (var (name, value) in dict) cmd.Parameters.AddWithValue("@" + name, value ?? DBNull.Value);
+            return cmd;
+        }
+        foreach (var prop in args.GetType().GetProperties())
+        {
+            cmd.Parameters.AddWithValue("@" + prop.Name, prop.GetValue(args) ?? DBNull.Value);
+        }
+        return cmd;
     }
 
     // DECIMAL comes back as a string ("12.50"), dates as "Y-m-d" / "Y-m-d H:i:s", like PDO did.

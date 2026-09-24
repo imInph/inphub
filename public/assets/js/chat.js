@@ -1,12 +1,12 @@
 /**
  * inphub: slide-out AI chat panel.
  *
- * Talks to api/ai.php using the portable action protocol: the backend parses
+ * Talks to /api/ai using the portable action protocol: the backend parses
  * any actions the model requested, executes the whitelisted ones, and returns
  * a clean reply plus a list of what it did. We surface those as small notes.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, markdown, toast } from './ui.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, markdown, toast } from './ui.js?v=e4ef27a132';
 let panel = null;
 let loaded = false;
 /** Active conversation; null until the first message starts a new one. */

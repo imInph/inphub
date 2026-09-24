@@ -1,6 +1,3 @@
-# Local DB credentials (copy from config.example.php)
-config/config.php
-
 # Dependencies
 node_modules/
 

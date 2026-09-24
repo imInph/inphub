@@ -2,8 +2,8 @@
  * inphub: command palette (Ctrl/Cmd+K): commands *and* global search.
  *
  * Typing filters the built-in commands locally and, in parallel, searches
- * every entity through api/search.php and asks Google for suggestions
- * (api/suggest.php). Results are grouped under headings (Commands → inphub
+ * every entity through /api/search and asks Google for suggestions
+ * (/api/suggest). Results are grouped under headings (Commands → inphub
  * groups → Google) and share one arrow/Enter selection. The Google group
  * always opens with a "Search Google for …" row, so with no local match,
  * typing and pressing Enter searches the web, even when suggestions fail.
@@ -25,7 +25,7 @@ import {
 
 declare global {
   interface Window {
-    /** Called by the inline onclick in index.php. */
+    /** Called by the inline onclick in Pages/Index.cshtml. */
     inphubPalette?: () => void;
   }
 }
@@ -110,7 +110,7 @@ export function initPalette(opts: { chat: boolean }): void {
     if (row) choose(Number(row.dataset.i));
   });
 
-  // Exposed for the inline onclick in index.php. Inline DOM level-0 handlers
+  // Exposed for the inline onclick in Pages/Index.cshtml. Inline DOM level-0 handlers
   // are the established pattern here: in the owner's Firefox, addEventListener
   // bindings on the sidebar/topbar chrome silently never fire (an extension
   // appears to wrap addEventListener). See the note in CLAUDE.md.
@@ -403,7 +403,7 @@ function download(action: string): void {
 }
 
 /**
- * Free-text capture routed by api/ai.php: with AI on the model classifies it,
+ * Free-text capture routed by /api/ai: with AI on the model classifies it,
  * otherwise prefix parsing handles "todo:", "note:", "spent 12 on lunch", etc.
  */
 function quickCapture(): void {

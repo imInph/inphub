@@ -5,21 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `inphub` is a personal life-dashboard (expenses, GitHub repos, todos, habits, goals, notes, focus
-sessions, activity history) with hand-created logins and an optional AI layer. Since v4 the backend
-is **ASP.NET Core (.NET 10, C#) in `server/`** on MySQL/MariaDB; the TypeScript frontend compiles to
-plain ES-module JS (no React, no bundler). The owner develops and runs it locally on macOS; there is
-no remote server, shipping means commit + push to GitHub.
-
-**v4 is a split backend, on purpose.** The owner reads C#, not PHP, so everything moved to C#
-except the two "hard" areas, which stay PHP until v4.1: the **AI layer** (`api/ai.php` +
-`lib/ai.php`) and the **backup format** shared with inphub lite (`lib/backup.php`, `api/import.php`,
-`api/export.php` backup only). The C# server is the only front door; it forwards `/api/ai`,
-`/api/import` and `/api/export?action=backup|json` to the PHP copy in XAMPP's
-`/Applications/XAMPP/xamppfiles/htdocs/inphub` (`Inphub:PhpApiUrl`) through the bridge described
-below. After changing any PHP, rsync the repo into that copy, skipping `node_modules/`, `server/`
-and `.git/`, and never overwriting its `config/config.php` (it holds the `bridge_key`). v4.1 ports
-the rest and removes PHP, XAMPP and the bridge; how the app is run/installed after that is still
-open (the owner wants to script it).
+sessions, activity history) with hand-created logins and an optional AI layer. The backend is
+**ASP.NET Core (.NET 10, C#) in `server/`** on MySQL/MariaDB over **plain ADO.NET**
+(MySqlConnector; no EF, no Dapper); the TypeScript frontend compiles to plain ES-module JS (no
+React, no bundler). The owner develops and runs it locally on macOS (`cd server && dotnet run` →
+`http://localhost:5080`, MySQL from XAMPP); there is no remote server, shipping means commit + push
+to GitHub. It was PHP until v4.0 moved most of it and v4.1 moved the AI layer and the backup format,
+so there is no PHP, Apache or bridge left. How it gets installed/run for others (the owner wants to
+script it) is still open.
 
 The original specification lives in `inphub-prompt.md` (kept locally, gitignored, not in the
 public repo). **The database schema is `inphub.sql` and must
@@ -27,16 +20,17 @@ be matched exactly, never invent or alter tables/columns.** If a schema change i
 `CREATE`/`ALTER` in a dated `db/migrate-YYYY-MM-DD.sql` for existing databases AND mirror it in
 `inphub.sql` for fresh installs (see `db/migrate-2026-07-19.sql` / `chat_sessions`).
 
-The app version is `AppInfo.Version` in `server/Core/AppInfo.cs` (sidebar, login footer). Bump it
-together with `INPHUB_VERSION` in `lib/helpers.php` (the backup file records it), `version` in
-`package.json`, the `vX.Y.Z` line at the top of `README.md`, and the console stamp at the end of
-`init()` in `src/app.ts` (hardcoded on purpose: it proves which `app.js` the browser actually loaded).
+The app version is `AppInfo.Version` in `server/Core/AppInfo.cs` (sidebar, login footer, the
+backup file's `app_version`). Bump it together with `version` in `package.json`, the `vX.Y.Z` line
+at the top of `README.md`, and the console stamp at the end of `init()` in `src/app.ts` (hardcoded
+on purpose: it proves which `app.js` the browser actually loaded).
 
 ## Writing C# here (owner's rules)
 
 The whole point of v4 is that the owner can open a file and follow it. Keep it **plain**: Minimal
-APIs, static classes, SQL written out in full through `Db` (Dapper underneath), a `switch` on the
-action. No Entity Framework, no repository/service layers, no DI ceremony, no clever LINQ chains.
+APIs, static classes, SQL written out in full through `Db` (plain ADO.NET: `MySqlCommand` with
+`@name` parameters taken from an anonymous object or a dictionary), a `switch` on the action. No
+Entity Framework, no Dapper, no repository layers, no DI ceremony, no clever LINQ chains.
 **Comments: one short line per method, nothing else** unless a line is truly baffling without one.
 No XML-doc blocks, no section banners. One file per area, named after what it serves.
 
@@ -56,21 +50,23 @@ No XML-doc blocks, no section banners. One file per area, named after what it se
   ES-module *link* error that stops the whole app from executing, silently. The index page
   carries a `window.__inphubLoaded` guard that surfaces exactly that failure.
 - **Watch:** `npm run watch` (`tsc -w`).
-- **Lint PHP:** `php -l <file>` for the PHP that is left. `php` is not on the PATH here, use
-  XAMPP's: `/Applications/XAMPP/xamppfiles/bin/php -l <file>`. After touching the backup code run
-  `php tools/backup-selftest.php`.
-- **Hash a password (to add a user by hand):** `php tools/hashpw.php "thePassword"` → paste the
-  output into an `INSERT INTO users`. PHP `$2y$` and .NET `$2a$` bcrypt hashes verify on both sides.
+- **Command-line modes** (run the tool, print, exit; the web server never starts; dispatched by
+  `Tools/Cli.cs` at the top of `Program.cs`): `dotnet run -- hashpw "pw"` prints a bcrypt hash for
+  an `INSERT INTO users`; `dotnet run -- backup-selftest` checks the backup format with no
+  database; `dotnet run -- backup-dbtest` checks importing against `inphub_import_test` and
+  refuses any other database. Run both backup checks after touching `Services/Backup.cs`.
 - **No automated test framework.** Verification is manual against the running app. For backend
-  changes, compare an action's JSON between the old and new code with `jq -S` against a throwaway
-  database (import `inphub.sql` with the db name swapped), never the owner's real `inphub` db.
+  changes, compare an action's JSON between the old and new build with `jq -S` against a throwaway
+  database (import `inphub.sql` with the db name swapped, point the server at it with
+  `Inphub__DbName=...`), never the owner's real `inphub` db. AI changes can be tested without a
+  model by pointing LM Studio's base URL at a tiny fake `/v1/chat/completions` server that answers
+  from a script and logs the prompts it received.
 
 ## Running locally
 
 1. Import `inphub.sql` (phpMyAdmin or `mysql -u root < inphub.sql`). Seeds admin `admin` / `changeme`.
-2. `cp server/appsettings.Local.example.json server/appsettings.Local.json` (DB creds, `PhpApiUrl`,
-   `BridgeKey`) and `cp config/config.example.php config/config.php` with the same `bridge_key`.
-   Both are gitignored. Environment variables (`Inphub__DbName=...`) override the Local file.
+2. `cp server/appsettings.Local.example.json server/appsettings.Local.json` (DB creds and
+   `DeveloperUser`; gitignored). Environment variables (`Inphub__DbName=...`) override it.
 3. `npm install && npm run build` (only needed after editing `src/`; the built JS is committed).
 4. `cd server && dotnet run`, open `http://localhost:5080` and log in.
 
@@ -79,15 +75,15 @@ download runs with no Node. It was gitignored before v2.1.2, and a fresh downloa
 sidebar over a blank page, because the entry-module 404 fires no window `error` event, so the
 banner stayed silent; the index page now checks for `app.js` server-side. **Every commit that
 touches `src/` must include the rebuilt output from `npm run build`**; the build id is a content
-hash, so an unchanged rebuild produces no diff. `config/config.php`,
-`server/appsettings.Local.json`, `server/bin|obj/`, `node_modules/`, and the `inphub-*prompt*.md`
-notes are gitignored. `server/.htaccess` denies Apache access to `server/`, since the Local file is
-plain JSON with the DB password and bridge key.
+hash, so an unchanged rebuild produces no diff. `server/appsettings.Local.json`,
+`server/bin|obj/`, `node_modules/`, and the `inphub-*prompt*.md` notes are gitignored.
+`server/.htaccess` denies Apache access to `server/` in case the folder still sits in htdocs, since
+the Local file is plain JSON with the DB password.
 
 ## Architecture
 
 ### Request/response contract (critical, app-wide)
-Every `/api/*` endpoint, C# or PHP, returns one envelope: success `{ "ok": true, "data": ... }`,
+Every `/api/*` endpoint returns one envelope: success `{ "ok": true, "data": ... }`,
 failure `{ "ok": false, "error": "..." }` with a matching HTTP status. The frontend `src/api.ts`
 (which calls `/api/<name>?action=`) relies on this, never break the shape. In C#:
 - `Api.Handle(handler)` / `Api.HandleAsync` (`server/Core/Api.cs`) read the input, enforce login
@@ -101,7 +97,7 @@ failure `{ "ok": false, "error": "..." }` with a matching HTTP status. The front
 - `Api.FetchOwned(table, id, uid)` loads a row scoped to the owner (404 if foreign); the table is
   whitelisted, never interpolated from user input. `Api.ValidEnum()` sanitises ENUM values.
 
-**JSON must stay byte-compatible with what the PHP returned**, because the frontend was written
+**JSON must stay shaped the way the old PHP returned it**, because the frontend was written
 against it. `Db.Rows()` / `Db.Row()` return `Dictionary<string, object?>` rows with the column
 names as keys and PDO's value shapes: `DECIMAL` as a **string** (`"12.50"`), `DATE` as
 `"Y-m-d"`, `DATETIME`/`TIMESTAMP` as `"Y-m-d H:i:s"`, `TINYINT(1)` as `0/1` (the connection sets
@@ -111,22 +107,9 @@ property names (`new { current_value = … }`). Where the PHP cast to float/int,
 shortest form; same number, not a bug.) Dates: `DateTime.Now` / `AppInfo.Today()`, the Mac's
 zone, which MySQL's `NOW()` also uses. (XAMPP's PHP ran on Europe/Berlin, an hour off.)
 
-**PHP gotcha (ai.php):** `api_handle()` runs the request synchronously at its call site, and PHP
-does NOT hoist top-level `const` (only `function`). Any `const` a handler needs must be defined
-ABOVE the `api_handle(...)` call.
-
-### The PHP bridge (v4 only, `server/Core/PhpBridge.cs` ↔ `lib/auth.php`)
-`PhpBridge.Forward()` (YARP's `IHttpForwarder`) sends the request to `<PhpApiUrl><file>.php` with
-`X-Inphub-User: <uid>` and `X-Inphub-Key: <BridgeKey>`, drops the browser's cookies on the way
-in and PHP's `Set-Cookie` on the way out. PHP has **no sessions or logins any more**:
-`auth_boot()` only sets the user when `bridge_user_id()` sees the exact `bridge_key` from
-`config/config.php` on a request from 127.0.0.1/::1; everything else is unauthenticated (401).
-An empty key disables the bridge (the server answers 503 with a hint). Settings' "Test AI" button
-calls `ai?action=test_connection` (ungated, next to `status`).
-
 ### Data isolation
-This is multi-account. **Every query is scoped to the current user id** (`req.Uid` in C#,
-`current_user_id()` in PHP) and goes through parameters only (`@uid`, no string-interpolated SQL,
+This is multi-account. **Every query is scoped to the current user id** (`req.Uid`) and goes through
+parameters only (`@uid`, no string-interpolated SQL,
 ever; the only interpolations are whitelisted table/column names and clamped `LIMIT` ints). A user
 only ever sees their own rows. Rows referenced by id from the client (e.g. `linked_todo_id`) are
 ownership-checked via `FetchOwned()` before use.
@@ -135,8 +118,8 @@ ownership-checked via `FetchOwned()` before use.
 ASP.NET cookie authentication (`inphub4_session`, claims `uid` + role) plus remember-me: a random
 token whose **SHA-256 hash** is stored in `remember_tokens` (raw token only in an
 httponly/SameSite=Lax cookie), rotated on each use by the middleware in `Program.cs`. The cookie
-is `inphub4_remember`, **not** `inphub_remember`: cookies ignore the port, so sharing the name with
-the old PHP app on :80 made the two rotate each other's token. Login is the Razor page
+is `inphub4_remember`, **not** v3's `inphub_remember`: cookies ignore the port, so a leftover PHP
+copy on :80 would otherwise rotate the server's token. Login is the Razor page
 `Pages/Login.cshtml` (+ `/api/auth?action=login` for JSON), `/logout` ends both. Admin checks read
 the role from the database, not the cookie. There is no registration, accounts are inserted by
 hand. `CurrentUser()` never selects `password_hash`.
@@ -154,60 +137,70 @@ means "keep the stored value" so the mask never overwrites the real secret. The 
 validated before anything is written. Saving `ai_enabled` to anything but `'1'` also deletes the
 user's stored daily briefs.
 
-### AI layer (`lib/ai.php` + `api/ai.php`, still PHP until v4.1), optional, provider-agnostic
-Off by default. `ai_available($uid)` is the ONE canonical gate for every AI feature; in `api/ai.php`
-`ai_gate()` applies it (403) to every action except `status` and `quick_add`. `ai_generate($uid,
-$system, $prompt, $opts)` reads the user's settings and dispatches to **Claude** (`/v1/messages`),
-**Ollama** (`/api/chat`) or **LM Studio** (OpenAI-compatible `/v1/chat/completions`) over cURL, feature
-code never branches on provider; `ai_active_model($c)` is the one provider → model mapping. `$opts['model']`
-overrides the model for that single call (used by the chat's per-session model combo, fed by
-`ai_list_models()`); it must never be written to settings.
+### AI layer (`server/Services/Ai.cs`, `Chat.cs`, `ChatActions.cs`, `Brief.cs`, `QuickAdd.cs`, `RepoAnalysis.cs`, `Endpoints/AiApi.cs`), optional, provider-agnostic
+Off by default. `Ai.Available(uid)` is the ONE canonical gate for every AI feature; `AiApi` applies
+it (403) to every action except `status`, `test_connection` and `quick_add` (unknown actions still
+404). `Ai.Generate(uid, system, prompt, maxTokens:, timeout:, model:, rawSystem:)` reads the user's
+settings and dispatches to **Claude** (`/v1/messages`), **Ollama** (`/api/chat`) or **LM Studio**
+(OpenAI-compatible `/v1/chat/completions`, no max_tokens so local reasoning models aren't cut off;
+a leading `<think>…</think>` is stripped) over one static `HttpClient`; feature code never branches
+on provider, and `Ai.ActiveModel(c)` is the one provider → model mapping. `model:` overrides the
+model for that single call (the chat's per-session combo, fed by `Ai.ListModels()`); it must never
+be written to settings.
 
-`ai_generate()` prepends `ai_locale_preamble($uid)` to every `$system`, the user's currency (code
+`Ai.Generate()` prepends `Ai.LocalePreamble(uid)` to every system prompt, the user's currency (code
 + name, "never assume dollars") and today's date. It is the single place app-wide facts belong.
-`$opts['raw_system'] => true` skips it, and the three prompts that demand strict JSON back
-(`quick_add_ai`, `analyze_repo`, `ai_test_connection`) set it, because stray prose breaks their
-parsers. **Never let a money figure reach a model without a currency**: use `money_text()`
-(`lib/helpers.php`), which is also why `activity_log` summaries carry units, the weekly review
-reads those rows back to the model.
+`rawSystem: true` skips it, and the three prompts that demand strict JSON back (`QuickAdd.ByModel`,
+`RepoAnalysis.Analyze`, `Ai.TestConnection`) set it, because stray prose breaks their parsers.
+**Never let a money figure reach a model without a currency**: use `Money.Text()`, which is also why
+`activity_log` summaries carry units, the weekly review reads those rows back to the model.
+
+**Model output is read with PHP's loose rules on purpose.** The prompts and the parser were tuned
+against PHP arrays, so `Services/ModelJson.cs` reproduces them on `System.Text.Json.Nodes`:
+`Text()` is `(string)`, `Int()`/`Number()` are `(int)`/`(float)` ("12abc" → 12), `IsNumeric()`,
+`Truthy()` (PHP `empty()` in reverse, so `"append": "0"` is false), `IsScalar()`, `AsObject()` (a JSON
+list seen as an object keyed "0", "1", …), and `At(node, "choices", "0", "message")` for reading a
+provider response without throwing on an unexpected shape. Don't swap those for strict
+deserialisation: a right answer under a slightly wrong shape has to keep working.
 
 The chat feature uses a portable action protocol (a fenced ```json block of `{actions:[...]}`
-validated against the `CHAT_ACTIONS` whitelist) instead of native tool-calling, because Ollama
-tool-use is inconsistent. Small local models need the mechanism spelled out, the prompt must say
-that *emitting the block is* the action (wording like "only include it when you actually performed
-an action" reads as "you cannot act" and they skip it), and it carries worked examples. Parsing is
-deliberately liberal (`split_actions()` → `normalise_chat_actions()` → `extract_balanced_json()`):
-any fence tag or none (gemma emits ```tool_code), `{actions:[…]}` / a lone `{tool,args}` / a bare
-array, and `tool|action|name` + `args|arguments|parameters` key spellings. The chat snapshot is
-`brief_context($uid, true)`, the `true` adds the row **ids** the action tools need (and recent
-notes / money entries, so the edit tools have something to address); without them those tools
-cannot be used at all, and the prompt forbids guessing an id. The daily brief passes `false` (ids
-are noise in prose a human reads).
+validated against `ChatActions.Tools`) instead of native tool-calling, because Ollama tool-use is
+inconsistent. Small local models need the mechanism spelled out, the prompt must say that
+*emitting the block is* the action (wording like "only include it when you actually performed an
+action" reads as "you cannot act" and they skip it), and it carries worked examples. **The prompts
+are raw string literals copied verbatim from the tuned PHP; don't reword them casually.** Parsing is
+deliberately liberal (`Chat.SplitActions()` → `Chat.NormaliseActions()` →
+`ModelJson.ExtractBalanced()`): any fence tag or none (gemma emits ```tool_code), `{actions:[…]}` /
+a lone `{tool,args}` / a bare array, and `tool|action|name` + `args|arguments|parameters` key
+spellings. The chat snapshot is `Brief.Context(uid, true)`, the `true` adds the row **ids** the
+action tools need (and recent notes / money entries, so the edit tools have something to address);
+without them those tools cannot be used at all, and the prompt forbids guessing an id. The daily
+brief passes `false` (ids are noise in prose a human reads).
 
 `CHAT_ACTIONS` covers every area, not just todos (add/complete/update todo · add/log/unlog habit ·
 add/progress/status goal · add/update note · add/update/delete expense · repo suggestion). Three
 rules hold for all of them:
-- **Exactly one item.** A name must pick out one row: in `chat_resolve()` an exact title that is
+- **Exactly one item.** A name must pick out one row: in `ChatActions.Resolve()` an exact title that is
   also contained in other titles ("Email Ali" next to "Email Ali about rent") fails as ambiguous
   with every candidate id, and prompt rule 8 tells the model to ask instead of choosing. Ids skip
   the check; categories are exempt. The resolver also reads the key spellings models invent
   (`habit_name`, `task`, a numeric name) so a right answer under a wrong key still works.
-- **Resolve, don't trust.** `chat_resolve($uid, $kind, $args)` finds the row by id **or** name
+- **Resolve, don't trust.** `ChatActions.Resolve(uid, kind, args)` finds the row by id **or** name
   (models send names however firmly the prompt says otherwise), always scoped to `user_id`, and an
   ambiguous name errors with the candidate ids rather than picking one. Table/column names come
-  from the `CHAT_ENTITIES` map only, never from model output. `delete_expense` deliberately
+  from the `Entities` map only, never from model output. `delete_expense` deliberately
   refuses a name and demands an id, so a fuzzy match can never delete the wrong row.
-- **Fail loudly, in words the model can use.** Throw `ChatActionError` via `fail_action()` with the
-  actual reason ("there is no task with id 999") instead of returning null. `chat_turn()` catches
-  it, shows it, and `recent_chat_text()` replays every outcome into the next turn's transcript as a
+- **Fail loudly, in words the model can use.** Throw `ChatActionException` with the actual reason
+  ("there is no task with id 999") instead of returning null. `Chat.Turn()` catches it, shows it,
+  and `Chat.RecentText()` replays every outcome into the next turn's transcript as a
   `(system: result of those actions, …)` line, that feedback loop is what lets a model correct a
-  wrong id instead of silently repeating it. `action_results_line()` builds that line: successes
-  carry the touched row as `[expense id 395]` (from the `ref` that `action_done()` returns, never
+  wrong id instead of silently repeating it. `Chat.ActionResultsLine()` builds that line: successes
+  carry the touched row as `[expense id 395]` (from the `ref` that `Done()` returns, never
   shown to the user) and failures carry the args that were sent. That is how "change that to 380"
-  finds the row just created. Validate arguments with `chat_date()` (which also accepts
-  "today"/"tomorrow"), `chat_text()`, `chat_amount()` rather than letting MySQL reject them.
+  finds the row just created. Validate arguments with `Date()` (which also accepts
+  "today"/"tomorrow"), `RequiredText()`/`OptionalText()`, `Amount()` rather than letting MySQL reject them.
 - **One repair pass.** The reply prose is written before actions run, so when any action fails
-  `chat_turn()` makes one more `ai_generate()` call with the results; its prose replaces the
+  `Chat.Turn()` makes one more `Ai.Generate()` call with the results; its prose replaces the
   first reply (which claimed success) and it may retry **only the tools that failed**, so a
   succeeded `add_*` can never be duplicated. No second round. The chat snapshot lists money entries
   by `id DESC` (recently added), not `spent_at`: post-dated rows used to push today's entry out
@@ -216,34 +209,36 @@ rules hold for all of them:
 
 Chat conversations persist in `chat_sessions` (+ `session_id` on `chat_messages`), titled from the
 first user message; legacy rows are backfilled into a `'default'` session. The system prompt is
-built only in `chat_system_prompt()` (single-user app facts, username injection, developer-mode
-block for the username in `config/config.php`'s `developer_user`, read via `app_config()`, empty
-disables it; the key is deliberately in the gitignored config so it stays out of the public repo).
-Repo AI analysis is cached: within `AI_ANALYZE_COOLDOWN_HOURS` it serves
+built only in `Chat.SystemPrompt()` (single-user app facts, username injection, developer-mode
+block for the username in `Inphub:DeveloperUser`, empty disables it; it lives in the gitignored
+`appsettings.Local.json` so it stays out of the public repo).
+Repo AI analysis is cached: within `RepoAnalysis.CooldownHours` it serves
 existing `repo_suggestions` (freshness derived from `MAX(created_at)`, no schema column), and a
 garbled model reply must never delete previous suggestions.
 
-### Backup / restore (`lib/backup.php`, `api/import.php`, `api/export.php`, still PHP until v4.1)
+### Backup / restore (`server/Services/Backup.cs`, `Endpoints/Import.cs`, `Endpoints/Export.cs`)
 `BACKUP-FORMAT.md` is the contract, and **an identical copy lives in the inphub-lite
 repo**. Both apps read and write the same `.txt`, so a change here without the matching
 change there breaks the migration path in one direction only, which is the hardest kind
 to notice. Bump `format_version` when the shape changes.
 
-All the parsing, validating and shape conversion is in `lib/backup.php`, not the
-endpoint, so `php tools/backup-selftest.php` can exercise it with no web server and no
-database. Run it after touching either side. `api/import.php` is only the part that
-writes: one transaction, children deleted before parents on a replace, parents inserted
-before children always.
+All the parsing, validating and shape conversion is in `Backup.cs`, not the endpoints, so
+`dotnet run -- backup-selftest` can exercise it with no web server and no database, and
+`backup-dbtest` covers the writing against `inphub_import_test`. Run both after touching it.
+`Backup.Apply()` is one transaction: children deleted before parents on a replace, parents
+inserted before children always, ids kept on replace and remapped on merge. Merge reuses a
+colliding row (category/habit/repo by name, habit_logs by day with max(count), activity by
+created_at+type+summary, chat session by id, daily brief by date) instead of inserting it.
 
-The conversions exist because PDO (`EMULATE_PREPARES => false`) returns `DECIMAL` and
-often `INT` as **strings** and MySQL writes datetimes with a space. The file uses JSON
-numbers and `YYYY-MM-DDTHH:mm:ss`. Mixing the two datetime forms in one table breaks
-`ORDER BY created_at` outright, because a space is `0x20` and a `T` is `0x54`.
+The conversions exist because the database hands back `DECIMAL` as strings (`Db.Clean()` keeps
+PDO's shapes) and MySQL writes datetimes with a space, while the file uses JSON numbers and
+`YYYY-MM-DDTHH:mm:ss`. Mixing the two datetime forms in one table breaks `ORDER BY created_at`
+outright, because a space is `0x20` and a `T` is `0x54`. The file is 4-space-indented with letters
+and emoji written raw (`Backup.ToFileText()` undoes .NET's `\uD83C\uDF54` pair escaping).
 `github_token`, `claude_api_key` and `lmstudio_api_key` are never written to a file.
 
 ### Activity log
-`Activity.Log(...)` (`server/Core/Activity.cs`, and `log_activity()` in `lib/activity.php` for
-the PHP side) records meaningful mutations (actor `user`/`ai`/`system`). Money summaries always
+`Activity.Log(...)` (`server/Core/Activity.cs`) records meaningful mutations (actor `user`/`ai`/`system`). Money summaries always
 carry units via `Money.Text()` (`"130.00 TRY"`).
 The dashboard, daily brief, and weekly review read from this timeline.
 
@@ -382,9 +377,8 @@ Conventions that prevent recurring bugs:
 
 ## Layout
 `server/` the ASP.NET app: `Program.cs` wiring · `Core/` Db, Api, Input, Settings, Money,
-Appearance, Activity, PhpBridge · `Auth/` login, remember-me, provisioning · `Endpoints/` one
-file per `/api/<name>` · `Services/` GitHub · `Pages/` Index + Login (Razor). `public/` web root
-(compiled assets, css, icons; served by the server as static files, `*.php` never) · `src/` TS
-source · `api/` + `lib/` the PHP left for v4 (ai, import, export-backup, backup, helpers,
-auth = bridge check) · `config/` PHP config · `db/` PDO singleton + `migrate-*.sql` · `tools/`
-CLI helpers + backup tests.
+Appearance, Activity · `Auth/` login, remember-me, provisioning · `Endpoints/` one file per
+`/api/<name>` · `Services/` Ai, Chat, ChatActions, Brief, QuickAdd, RepoAnalysis, ModelJson, Backup,
+GitHub · `Tools/` command-line modes · `Pages/` Index + Login (Razor). `public/` web root (compiled
+assets, css, icons; served by the server as static files) · `src/` TS source · `db/`
+`migrate-*.sql` · `tools/` the build-id stamper and the vendor copy script.

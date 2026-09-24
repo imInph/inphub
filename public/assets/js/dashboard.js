@@ -1,18 +1,18 @@
 /**
  * inphub: dashboard: Google search (with suggestions, dash-search.ts), a gap-free widget grid, and a shortcuts
- * rail, all stitched from one stats.php?action=dashboard call.
+ * rail, all stitched from one stats?action=dashboard call.
  *
  * Which widgets show, their order and their size come from the user's
  * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets
  * themselves live in widgets.ts.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=317b34a9c2';
-import { go } from './app.js?v=317b34a9c2';
-import { icon } from './icons.js?v=317b34a9c2';
-import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=317b34a9c2';
-import { openWidgetPicker } from './widget-picker.js?v=317b34a9c2';
-import { mountDashSearch } from './dash-search.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, toast, onAction, openModal, formValues, loadingState } from './ui.js?v=e4ef27a132';
+import { go } from './app.js?v=e4ef27a132';
+import { icon } from './icons.js?v=e4ef27a132';
+import { WIDGETS, widgetShell, widgetAvailable, isWidgetId, setCaptureMode, generateBrief, clearBrief, abortBrief, } from './widgets.js?v=e4ef27a132';
+import { openWidgetPicker } from './widget-picker.js?v=e4ef27a132';
+import { mountDashSearch } from './dash-search.js?v=e4ef27a132';
 let data = null;
 let shortcuts = [];
 export async function renderDashboard(container) {

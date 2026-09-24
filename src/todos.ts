@@ -306,7 +306,7 @@ function row(t: Todo, index = 0, total = 1): string {
 
 /**
  * Swap a task with its neighbour and persist the whole order.
- * api/todos.php has had a `reorder` action since day one with no caller.
+ * /api/todos has had a `reorder` action since day one with no caller.
  */
 async function move(container: HTMLElement, id: number, dir: number): Promise<void> {
   const ids = cache.map((t) => t.id);

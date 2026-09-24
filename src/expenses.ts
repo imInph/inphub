@@ -34,7 +34,7 @@ interface MoneyStats {
   budgets: { name: string; color: string | null; monthly_budget: string; spent: string }[];
 }
 
-/** Selectable windows, server-side keys in lib/helpers.php MONEY_PERIODS. */
+/** Selectable windows, server-side keys in Money.Periods (server/Core/Money.cs). */
 const PERIODS: ReadonlyArray<readonly [string, string]> = [
   ['month', 'This month'],
   ['last_month', 'Last month'],

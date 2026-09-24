@@ -1,6 +1,6 @@
 /**
  * inphub: dashboard: Google search (with suggestions, dash-search.ts), a gap-free widget grid, and a shortcuts
- * rail, all stitched from one stats.php?action=dashboard call.
+ * rail, all stitched from one stats?action=dashboard call.
  *
  * Which widgets show, their order and their size come from the user's
  * `dashboard_widgets` setting (edited in widget-picker.ts). The widgets

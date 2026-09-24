@@ -2,10 +2,10 @@
  * inphub: dashboard widget registry.
  *
  * Every widget the dashboard can show, keyed by id. The ids MUST match
- * DASHBOARD_WIDGETS in lib/helpers.php, which is what the server validates a
+ * Appearance.DashboardWidgets in server/Core/Appearance.cs, which is what the server validates a
  * saved layout against (an id missing there is silently dropped on save).
  *
- * A widget renders an HTML string from the one stats.php?action=dashboard
+ * A widget renders an HTML string from the one stats?action=dashboard
  * payload; the few that need live behaviour (clock, capture, brief) also get a
  * mount() call after the dashboard markup is in the DOM.
  */

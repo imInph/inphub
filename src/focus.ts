@@ -1,5 +1,5 @@
 /**
- * inphub: focus: a deep-work timer that logs finished sessions to focus.php,
+ * inphub: focus: a deep-work timer that logs finished sessions to /api/focus,
  * plus today's total and a 7-day bar chart.
  *
  * The timer is wall-clock based, not tick-counted. It stores the accumulated

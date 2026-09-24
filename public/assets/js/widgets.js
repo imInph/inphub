@@ -2,17 +2,17 @@
  * inphub: dashboard widget registry.
  *
  * Every widget the dashboard can show, keyed by id. The ids MUST match
- * DASHBOARD_WIDGETS in lib/helpers.php, which is what the server validates a
+ * Appearance.DashboardWidgets in server/Core/Appearance.cs, which is what the server validates a
  * saved layout against (an id missing there is silently dropped on save).
  *
- * A widget renders an HTML string from the one stats.php?action=dashboard
+ * A widget renders an HTML string from the one stats?action=dashboard
  * payload; the few that need live behaviour (clock, capture, brief) also get a
  * mount() call after the dashboard markup is in the DOM.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, money, fmtDate, timeAgo, markdown, toast, localDate, sparkline, } from './ui.js?v=317b34a9c2';
-import { go, aiAvailable } from './app.js?v=317b34a9c2';
-import { icon } from './icons.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, money, fmtDate, timeAgo, markdown, toast, localDate, sparkline, } from './ui.js?v=e4ef27a132';
+import { go, aiAvailable } from './app.js?v=e4ef27a132';
+import { icon } from './icons.js?v=e4ef27a132';
 /* ------------------------------------------------------------------ shell */
 export function widgetShell(id, def, size, index, body) {
     return `<section class="card widget" data-widget="${id}" data-size="${size}" style="--i:${index}">

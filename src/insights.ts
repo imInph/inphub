@@ -1,7 +1,7 @@
 /**
  * inphub: insights: the cross-entity patterns no single view can show.
  *
- * Everything comes from one api/insights.php call, scoped by the same period
+ * Everything comes from one /api/insights call, scoped by the same period
  * vocabulary as Money. Chart.js is a global, vendored in public/assets/js and
  * loaded by the shell, so charts cost nothing extra here.
  */

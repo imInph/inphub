@@ -6,21 +6,21 @@
  * `render(container)` entry point; we import them all up front (small app, no
  * bundler) and mount the active one into its <section id="view-<id>">.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { toast, openModal, escapeHtml } from './ui.js?v=317b34a9c2';
-import { initChat } from './chat.js?v=317b34a9c2';
-import { initPalette, setPaletteChat } from './command-palette.js?v=317b34a9c2';
-import { renderDashboard } from './dashboard.js?v=317b34a9c2';
-import { renderTodos } from './todos.js?v=317b34a9c2';
-import { renderExpenses } from './expenses.js?v=317b34a9c2';
-import { renderRepos } from './repos.js?v=317b34a9c2';
-import { renderHabits } from './habits.js?v=317b34a9c2';
-import { renderGoals } from './goals.js?v=317b34a9c2';
-import { renderNotes } from './notes.js?v=317b34a9c2';
-import { renderFocus } from './focus.js?v=317b34a9c2';
-import { renderInsights } from './insights.js?v=317b34a9c2';
-import { renderActivity } from './activity.js?v=317b34a9c2';
-import { renderSettings } from './settings.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { toast, openModal, escapeHtml } from './ui.js?v=e4ef27a132';
+import { initChat } from './chat.js?v=e4ef27a132';
+import { initPalette, setPaletteChat } from './command-palette.js?v=e4ef27a132';
+import { renderDashboard } from './dashboard.js?v=e4ef27a132';
+import { renderTodos } from './todos.js?v=e4ef27a132';
+import { renderExpenses } from './expenses.js?v=e4ef27a132';
+import { renderRepos } from './repos.js?v=e4ef27a132';
+import { renderHabits } from './habits.js?v=e4ef27a132';
+import { renderGoals } from './goals.js?v=e4ef27a132';
+import { renderNotes } from './notes.js?v=e4ef27a132';
+import { renderFocus } from './focus.js?v=e4ef27a132';
+import { renderInsights } from './insights.js?v=e4ef27a132';
+import { renderActivity } from './activity.js?v=e4ef27a132';
+import { renderSettings } from './settings.js?v=e4ef27a132';
 export const boot = window.INPHUB;
 const VIEWS = {
     dashboard: renderDashboard,
@@ -169,13 +169,13 @@ export function applyTheme(theme, remember = true) {
         /* storage unavailable */
     }
 }
-/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (css_url() in PHP). */
+/** `url("…")` for a wallpaper, with the url()-breaking characters encoded (Appearance.CssUrl() in C#). */
 export function cssUrl(url) {
     return `url("${url.replace(/[\\"'()\s]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))}")`;
 }
 /**
  * Apply accent, wallpaper and transparency to <html> and cache them for the
- * pre-paint scripts in index.php / login.php.
+ * pre-paint scripts in the Index and Login pages.
  */
 export function applyAppearance(a, remember = true) {
     const root = document.documentElement;
@@ -411,7 +411,7 @@ function init() {
         document.getElementById('btn-nav')?.setAttribute('aria-expanded', open ? 'true' : 'false');
     };
     // The theme button, hamburger, and drawer backdrop are wired through inline
-    // onclick attributes in index.php that call these globals. This is DOM
+    // onclick attributes in Pages/Index.cshtml that call these globals. This is DOM
     // level-0 on purpose: in the owner's environment BOTH direct addEventListener
     // bindings and a document-level delegated listener silently never fired for
     // these buttons (likely an extension wrapping addEventListener), while inline
@@ -446,12 +446,12 @@ function init() {
     initPalette({ chat: false });
     // AI is optional: only wire chat + reveal its button once we know it's configured.
     setupAi();
-    // Tells index.php's error guard that the module graph linked and ran, so the
+    // Tells the index page's error guard that the module graph linked and ran, so the
     // "hard-reload" banner only appears for a genuine boot failure.
     window.__inphubLoaded = true;
     // Deploy sanity stamp: if this line is missing from the console, the browser
     // is running a stale app.js (bad copy or cache), see CLAUDE.md deploy notes.
-    console.info(`[inphub] v${'4.0.0'} ready`);
+    console.info(`[inphub] v${'4.1.0'} ready`);
 }
 /**
  * The two ambient touches: the title bar turns to glass once content scrolls

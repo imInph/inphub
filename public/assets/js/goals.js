@@ -1,10 +1,10 @@
 /**
  * inphub: goals: progress bars with +/- nudges, status, target dates.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, confetti, todayStr, loadingState, } from './ui.js?v=317b34a9c2';
-import { currentParams } from './app.js?v=317b34a9c2';
-import { opts } from './todos.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, confetti, todayStr, loadingState, } from './ui.js?v=e4ef27a132';
+import { currentParams } from './app.js?v=e4ef27a132';
+import { opts } from './todos.js?v=e4ef27a132';
 const STATUSES = ['active', 'completed', 'paused'];
 /** Hide finished goals, the server sorts completed above paused, so without
  *  this they pile up at the top of the grid forever. */

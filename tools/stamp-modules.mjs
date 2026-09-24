@@ -4,7 +4,7 @@
  * Why this exists
  * ---------------
  * tsc emits bare relative specifiers: `import { toast } from './ui.js'`. Those
- * URLs carry no version, so index.php's ?v= cache-bust on app.js protects only
+ * URLs carry no version, so the index page's ?v= cache-bust on app.js protects only
  * the entry point. A browser can then pair a freshly fetched app.js with a
  * cached ui.js from an earlier build, and a missing export is an ES-module
  * *link* error, which stops app.js from executing at all. The whole app dies
@@ -18,7 +18,7 @@
  * Runs after tsc (see package.json "build"). Idempotent: existing stamps are
  * stripped before the id is recomputed, so repeated builds stay stable.
  *
- * The id is also written to build-id.txt, which index.php reads for the entry
+ * The id is also written to build-id.txt, which the index page (server/Pages/Index.cshtml.cs) reads for the entry
  * <script> URL. That MUST match the id in the import specifiers: if the entry
  * is app.js?v=A while a module imports ./app.js?v=B, the browser treats them
  * as two different modules and evaluates app.js twice, the second copy runs
@@ -66,7 +66,7 @@ for (const file of ours) {
   if (stamped !== bare.get(file)) rewritten++;
 }
 
-// index.php reads this for the entry URL, so the whole graph shares one id.
+// The index page reads this for the entry URL, so the whole graph shares one id.
 writeFileSync(join(dir, 'build-id.txt'), buildId + '\n');
 
 console.log(`stamped ${rewritten}/${ours.length} modules with ?v=${buildId}`

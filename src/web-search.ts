@@ -1,7 +1,7 @@
 /**
  * inphub: pieces shared by the two search boxes (the dashboard bar and the
- * command palette): Google suggestions through api/suggest.php, the Google
- * results URL, and the search.php result types + type → view map.
+ * command palette): Google suggestions through /api/suggest, the Google
+ * results URL, and the /api/search result types + type → view map.
  *
  * Suggestions go through the server because Google's suggest endpoint sends
  * no CORS headers. The endpoint answers an empty list when Google is slow or
@@ -37,7 +37,7 @@ export const RESULT_VIEWS: Record<string, string> = {
   repo: 'repos',
 };
 
-/** Queries shorter than this are not searched, matches SEARCH_MIN_CHARS in search.php. */
+/** Queries shorter than this are not searched, matches MinChars in server/Endpoints/Search.cs. */
 export const SEARCH_MIN_CHARS = 2;
 
 const CACHE_MAX = 50;

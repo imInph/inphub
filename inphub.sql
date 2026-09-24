@@ -8,7 +8,7 @@
 --  Accounts are created MANUALLY (no register page). A default
 --  admin is seeded below:  username = admin  /  password = changeme
 --  >>> CHANGE THE PASSWORD AFTER FIRST LOGIN. <<<
---  To add more users, use tools/hashpw.php to make a hash, then
+--  To add more users, use `cd server && dotnet run -- hashpw "pw"` to make a hash, then
 --  INSERT into `users` (see the template at the bottom of this file).
 -- ============================================================
 
@@ -23,7 +23,7 @@ USE `inphub`;
 CREATE TABLE `users` (
   `id`             INT AUTO_INCREMENT PRIMARY KEY,
   `username`       VARCHAR(50) NOT NULL,
-  `password_hash`  VARCHAR(255) NOT NULL,          -- PHP password_hash() (bcrypt)
+  `password_hash`  VARCHAR(255) NOT NULL,          -- bcrypt
   `display_name`   VARCHAR(100) NULL,
   `role`           ENUM('admin','user') NOT NULL DEFAULT 'user',
   `is_active`      TINYINT(1) NOT NULL DEFAULT 1,
@@ -390,7 +390,7 @@ INSERT INTO `settings` (`user_id`,`setting_key`,`setting_value`) VALUES
 
 -- ============================================================
 --  TEMPLATE — add another user by hand
---  1) run:  php tools/hashpw.php "theirPassword"   -> copy the hash
+--  1) run:  cd server && dotnet run -- hashpw "theirPassword"   -> copy the hash
 --  2) INSERT INTO `users` (`username`,`password_hash`,`display_name`,`role`)
 --         VALUES ('someuser','<PASTE_HASH_HERE>','Their Name','user');
 --     (defaults, categories, habits & settings auto-seed on their first login)

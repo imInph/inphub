@@ -1,9 +1,9 @@
 /**
  * inphub: todos: quick-add, filterable list, inline complete/edit/delete.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=317b34a9c2';
-import { currentParams } from './app.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=e4ef27a132';
+import { currentParams } from './app.js?v=e4ef27a132';
 const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 let filterStatus = 'open';
@@ -278,7 +278,7 @@ function row(t, index = 0, total = 1) {
 }
 /**
  * Swap a task with its neighbour and persist the whole order.
- * api/todos.php has had a `reorder` action since day one with no caller.
+ * /api/todos has had a `reorder` action since day one with no caller.
  */
 async function move(container, id, dir) {
     const ids = cache.map((t) => t.id);

@@ -1,5 +1,5 @@
 /**
- * inphub: focus: a deep-work timer that logs finished sessions to focus.php,
+ * inphub: focus: a deep-work timer that logs finished sessions to /api/focus,
  * plus today's total and a 7-day bar chart.
  *
  * The timer is wall-clock based, not tick-counted. It stores the accumulated
@@ -14,8 +14,8 @@
  * Nothing is written to the server until you finish, let it run out, or stop,
  * "Discard" abandons a session, which previously was impossible.
  */
-import { apiGet, apiPost } from './api.js?v=317b34a9c2';
-import { escapeHtml, fmtDate, timeAgo, emptyState, toast, localDateTime, onAction, confirmDialog, } from './ui.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=e4ef27a132';
+import { escapeHtml, fmtDate, timeAgo, emptyState, toast, localDateTime, onAction, confirmDialog, } from './ui.js?v=e4ef27a132';
 const STORE_KEY = 'inphub.focus.timer';
 const PRESETS = [25, 50, 15, 5];
 let state = fresh(25 * 60);

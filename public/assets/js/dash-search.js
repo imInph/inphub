@@ -10,10 +10,10 @@
  * dashboard render, so nothing stacks (the view container itself is only
  * ever wired through onAction()).
  */
-import { apiGet } from './api.js?v=317b34a9c2';
-import { escapeHtml, money } from './ui.js?v=317b34a9c2';
-import { go } from './app.js?v=317b34a9c2';
-import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=317b34a9c2';
+import { apiGet } from './api.js?v=e4ef27a132';
+import { escapeHtml, money } from './ui.js?v=e4ef27a132';
+import { go } from './app.js?v=e4ef27a132';
+import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=e4ef27a132';
 const GOOGLE_ROWS = 5;
 const INPHUB_ROWS = 5;
 const DEBOUNCE_MS = 150;
