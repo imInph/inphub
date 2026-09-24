@@ -42,3 +42,8 @@ inphub-claude-code-prompt-round2.md
 
 # The easter egg image is served from the web root, not from here
 zoktay.jpg
+
+# ASP.NET server (v4): build output and the local config with DB creds + bridge key
+server/bin/
+server/obj/
+server/appsettings.Local.json

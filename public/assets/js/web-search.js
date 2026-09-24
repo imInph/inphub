@@ -7,8 +7,8 @@
  * no CORS headers. The endpoint answers an empty list when Google is slow or
  * down, so callers only ever get fewer rows, never an error to show.
  */
-import { apiGet } from './api.js?v=42714d0ded';
-import { escapeHtml } from './ui.js?v=42714d0ded';
+import { apiGet } from './api.js?v=317b34a9c2';
+import { escapeHtml } from './ui.js?v=317b34a9c2';
 /** Result type → the view that can show it. The client owns route shape. */
 export const RESULT_VIEWS = {
     todo: 'todos',

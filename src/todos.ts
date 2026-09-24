@@ -122,9 +122,9 @@ function openExport(): void {
     bodyHtml: `
       <p class="text-dim" style="margin-top:0">Exports every task: title, status, priority, dates.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn" href="../api/export.php?action=todos_md">⬇ Markdown</a>
-        <a class="btn" href="../api/export.php?action=todos_csv">⬇ CSV</a>
-        <a class="btn" href="../api/export.php?action=todos_json">⬇ JSON</a>
+        <a class="btn" href="../api/export?action=todos_md">⬇ Markdown</a>
+        <a class="btn" href="../api/export?action=todos_csv">⬇ CSV</a>
+        <a class="btn" href="../api/export?action=todos_json">⬇ JSON</a>
       </div>`,
   });
 }

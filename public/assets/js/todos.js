@@ -1,9 +1,9 @@
 /**
  * inphub: todos: quick-add, filterable list, inline complete/edit/delete.
  */
-import { apiGet, apiPost } from './api.js?v=42714d0ded';
-import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=42714d0ded';
-import { currentParams } from './app.js?v=42714d0ded';
+import { apiGet, apiPost } from './api.js?v=317b34a9c2';
+import { escapeHtml, fmtDate, emptyState, toast, onAction, openModal, formValues, confirmDialog, flashFocused, } from './ui.js?v=317b34a9c2';
+import { currentParams } from './app.js?v=317b34a9c2';
 const STATUSES = ['todo', 'in_progress', 'done', 'archived'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 let filterStatus = 'open';
@@ -102,9 +102,9 @@ function openExport() {
         bodyHtml: `
       <p class="text-dim" style="margin-top:0">Exports every task: title, status, priority, dates.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn" href="../api/export.php?action=todos_md">⬇ Markdown</a>
-        <a class="btn" href="../api/export.php?action=todos_csv">⬇ CSV</a>
-        <a class="btn" href="../api/export.php?action=todos_json">⬇ JSON</a>
+        <a class="btn" href="../api/export?action=todos_md">⬇ Markdown</a>
+        <a class="btn" href="../api/export?action=todos_csv">⬇ CSV</a>
+        <a class="btn" href="../api/export?action=todos_json">⬇ JSON</a>
       </div>`,
     });
 }

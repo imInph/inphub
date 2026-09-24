@@ -76,6 +76,16 @@ api_handle(function (): void {
             ok(['available' => ai_available($uid)]);
             break;
 
+        // Settings' "Test AI" button; not gated, so it works before AI is switched on.
+        case 'test_connection': {
+            $result = ai_test_connection($uid);
+            if (!$result['ok']) {
+                fail('AI test failed: ' . $result['error'], 502);
+            }
+            ok($result);
+            break;
+        }
+
         case 'brief': {
             ai_gate($uid);
             $stmt = db()->prepare('SELECT * FROM daily_briefs WHERE user_id=? AND brief_date=CURRENT_DATE');

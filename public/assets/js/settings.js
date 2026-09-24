@@ -3,10 +3,10 @@
  * and (admins only) an account management panel. Secrets arrive masked and are
  * only re-sent when the user actually types a new value.
  */
-import { apiGet, apiPost } from './api.js?v=42714d0ded';
-import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=42714d0ded';
-import { opts } from './todos.js?v=42714d0ded';
-import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=42714d0ded';
+import { apiGet, apiPost } from './api.js?v=317b34a9c2';
+import { escapeHtml, fmtDate, markdown, toast, formValues, openModal, confetti, loadingState } from './ui.js?v=317b34a9c2';
+import { opts } from './todos.js?v=317b34a9c2';
+import { boot, aiAvailable, refreshAiAvailability, applyTheme, applyAppearance, cssUrl } from './app.js?v=317b34a9c2';
 const SECRET_UNCHANGED = '••••••••';
 /** Accent presets with their dark-theme swatch colour (UI_ACCENTS in lib/helpers.php). */
 const ACCENTS = [
@@ -150,9 +150,9 @@ export async function renderSettings(container) {
       <div class="card-head"><h3>Data</h3>
         <span class="text-dim" style="font-size:.82rem">Backups move between inphub and inphub lite.</span></div>
       <div class="toolbar">
-        <a class="btn" href="../api/export.php?action=backup">Export / back up…</a>
+        <a class="btn" href="../api/export?action=backup">Export / back up…</a>
         <button class="btn" data-role="import">Import…</button>
-        <a class="btn btn-ghost" href="../api/export.php?action=expenses_csv">Expenses (CSV)</a>
+        <a class="btn btn-ghost" href="../api/export?action=expenses_csv">Expenses (CSV)</a>
       </div>
       <div class="text-dim" style="margin-top:8px;font-size:.82rem">
         One .txt file with everything in this account, minus your API keys.
@@ -260,7 +260,7 @@ async function testAi(container) {
         // Save first so the just-typed provider/key/model are what we test.
         const form = container.querySelector('[data-role="form"]');
         await save(container, form);
-        const res = await apiPost('settings', 'test_ai', {});
+        const res = await apiPost('ai', 'test_connection', {});
         result.textContent = '✓ Connected' + (res.model ? ` (${res.model})` : '') + '.';
         result.className = 'text-good';
     }

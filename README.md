@@ -1,15 +1,20 @@
 # inphub
 
-v3.2.0, MIT licensed.
+v4.0.0, MIT licensed.
 
 A dashboard I built for myself to keep track of my own stuff in one place: money,
 tasks, habits, goals, notes, focus sessions, my GitHub repos, and a log of what I
 changed. There's an optional AI chat on top of it (Claude, or Ollama / LM Studio
 running locally) but it's off by default and everything works without it.
 
-It's PHP 8 and MySQL on the backend with no framework, and TypeScript on the
-frontend compiled to plain ES modules. No React, no bundler. It runs on XAMPP on
-my own machine, not on a server.
+Since v4 the backend is ASP.NET Core (C#, .NET 10) and MySQL, written plainly:
+minimal APIs and SQL through Dapper, no Entity Framework. The frontend is still
+TypeScript compiled to plain ES modules. No React, no bundler. It runs on my own
+machine, not on a server.
+
+v4 is a halfway point. The AI chat and the backup/import (the format shared with
+inphub lite) are still the old PHP code, running on XAMPP. The C# server forwards
+those requests to it. v4.1 moves them over too and then XAMPP isn't needed.
 
 Some stuff you might want to know if you look around:
 
@@ -36,8 +41,10 @@ Some stuff you might want to know if you look around:
 
 ## What you need
 
-- PHP 8.2 or newer with PDO MySQL, cURL and mbstring. XAMPP includes all of them.
+- The .NET 10 SDK (`brew install --cask dotnet-sdk` on a Mac).
 - MySQL or MariaDB.
+- For now, PHP 8.2+ with PDO MySQL, cURL and mbstring, for the AI and backup
+  parts. XAMPP gives you all of that plus MySQL.
 - Node 18+, but only if you change the TypeScript. The compiled JS is already in
   the repo, so you don't need it just to run the app.
 
@@ -47,20 +54,35 @@ Some stuff you might want to know if you look around:
 # 1. Database. This also creates the admin user with password "changeme".
 mysql -u root < inphub.sql
 
-# 2. Config. Just DB credentials. The defaults work on a stock XAMPP.
+# 2. Config for the C# server: DB credentials, where the PHP part lives, and a
+#    shared key so the PHP part knows requests really come from the server.
+cp server/appsettings.Local.example.json server/appsettings.Local.json
+
+# 3. Config for the PHP part (AI + backup). Put the same key in bridge_key.
 cp config/config.example.php config/config.php
 
-# 3. Frontend. Only if you're editing src/, the built JS is already there.
+# 4. Frontend. Only if you're editing src/, the built JS is already there.
 npm install
 npm run build        # or npm run watch while you're editing
+
+# 5. Start it.
+cd server && dotnet run
 ```
 
-Then go to http://localhost/inphub/public/ and log in as `admin` / `changeme`.
+Any long random string works as the key, `openssl rand -hex 32` makes one. Leave
+it empty and everything works except the AI and backup, which answer with an
+error saying the bridge isn't set up.
+
+The PHP part needs the folder to be inside XAMPP's `htdocs` (as `inphub/`, or
+change `PhpApiUrl`). The simplest setup is to keep the whole thing there and run
+`dotnet run` from inside it.
+
+Then go to http://localhost:5080 and log in as `admin` / `changeme`.
 Change that password straight away, it's written down in this file.
 
 Use `npm run build`, not plain `tsc`. The build also runs
 `tools/stamp-modules.mjs`, which adds a version to every compiled import and
-writes `public/assets/js/build-id.txt` for `index.php` to read. Skip it and the
+writes `public/assets/js/build-id.txt` for the index page to read. Skip it and the
 browser can end up loading a new `app.js` next to an old cached `ui.js`, which
 throws a module error and stops the whole app from starting without explaining
 itself. I lost an hour to that one.
@@ -75,18 +97,11 @@ and commit what it outputs along with your change.
 Settings, then the Password box. Needs the current one, and a new one of 8
 characters or more. Other devices you stayed logged in on get signed out.
 
-## Copying it to the XAMPP machine
+## Existing logins after upgrading to v4
 
-The whole folder goes into `htdocs`:
-
-1. If you changed anything in `src/`, run `npm run build` first.
-2. Copy the `inphub/` folder into `C:\xampp\htdocs\`. You can skip `node_modules/`.
-3. Import `inphub.sql` there and copy `config/config.example.php` to
-   `config/config.php`.
-4. Open http://localhost/inphub/public/.
-
-Paths are all relative or `__DIR__`-based and filenames are lowercase, so it
-works on Windows without changes.
+The C# server has its own session and remember-me cookies, so after upgrading you
+log in once more. Passwords don't change: the PHP bcrypt hashes work as they are,
+and new ones the server writes work in PHP too.
 
 ## Upgrading an older copy
 
@@ -157,29 +172,39 @@ it, which is the default.
 | `npm run build` | Compiles `src/*.ts` into `public/assets/js/` and stamps the build id |
 | `npm run watch` | Recompiles while you edit |
 | `npm run vendor` | Copies marked, DOMPurify and the footnote plugin into `public/assets/vendor/`. Only needed if you update them |
-| `php -l <file>` | Syntax-checks one PHP file. There are no tests. |
+| `cd server && dotnet run` | Starts the server on http://localhost:5080 |
+| `cd server && dotnet build` | Compiles the server, the closest thing to a test run |
+| `php -l <file>` | Syntax-checks one of the PHP files that are left |
 | `php tools/hashpw.php "pw"` | Prints a bcrypt hash for a new user |
 
 ## Layout
 
 ```
-config/   DB credentials (config.php is git-ignored)
-db/       PDO connection and the dated migration files
-lib/      shared backend: auth, helpers, provisioning, activity log, github, ai
-api/      the JSON endpoints, all behind a login and scoped to one user
-public/   web root: app shell, login, css, icons, compiled JS, vendored libraries
+server/   the ASP.NET server
+  Core/       database, request handling, settings, money, appearance, the PHP bridge
+  Auth/       login, remember-me, first-login defaults
+  Endpoints/  one file per area (Todos.cs, Expenses.cs, Stats.cs, ...)
+  Services/   GitHub
+  Pages/      the app shell and the login page (Razor)
+public/   web root: css, icons, compiled JS, vendored libraries
 src/      TypeScript source
-tools/    hashpw, the build-id stamper and the vendor copy script
+api/      the PHP that's left: ai.php, import.php, export.php (backup only)
+lib/      shared PHP for those: ai, backup, helpers, auth (bridge check only)
+config/   PHP config (config.php is git-ignored)
+db/       PDO connection and the dated migration files
+tools/    hashpw, the build-id stamper, the vendor copy script, backup tests
 ```
 
-Every `/api/*` endpoint replies with the same envelope, `{ "ok": true, "data": ... }`
+Every `/api/*` endpoint (C# or PHP) replies with the same envelope, `{ "ok": true, "data": ... }`
 or `{ "ok": false, "error": "..." }`, and every query is filtered by the logged-in
 user's id.
 
 ## About security
 
-- Passwords go through `password_hash()` (bcrypt). Sessions are cookies, with a
-  remember-me token that's stored hashed and rotated each time it's used.
+- Passwords are bcrypt. Sessions are cookies, with a remember-me token that's
+  stored hashed and rotated each time it's used.
+- The PHP part only trusts a request that comes from this machine and carries the
+  shared key, so it can't be used on its own.
 - Queries use prepared statements, so user input never gets concatenated into SQL.
 - The GitHub token and AI API keys are per-user, kept in the database, shown in
   password fields and masked when read back.
@@ -190,10 +215,11 @@ user's id.
 This is meant for localhost and I haven't hardened it for the internet. There's
 no rate limiting on the login form and no CSRF tokens. Because the folder sits
 inside `htdocs`, files outside `public/` (`inphub.sql`, `db/*.sql`,
-`tools/hashpw.php`) can be fetched over HTTP unless you point the document root
-at `public/` or block them. Don't put it on a public server as it is.
+`tools/hashpw.php`) can be fetched over HTTP from XAMPP unless you block them.
+`server/` is blocked by its own `.htaccess`, because `appsettings.Local.json` is
+plain JSON with the DB password and the bridge key in it. Don't put it on a public server as it is.
 
-There are no automated tests. I check things by hand against a running XAMPP.
+There are no automated tests. I check things by hand against the running app.
 
 ## License
 

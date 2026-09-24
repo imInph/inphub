@@ -20,4 +20,9 @@ return [
     // Username that gets the AI chat's "developer mode" (blunt, technical,
     // talks about the code and schema). Leave empty to disable it entirely.
     'developer_user' => '',
+
+    // v4: shared secret for the ASP.NET server, which forwards the AI and
+    // backup endpoints here. Must equal Inphub:BridgeKey in
+    // server/appsettings.Local.json. Empty disables the bridge.
+    'bridge_key' => '',
 ];

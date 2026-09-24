@@ -399,7 +399,7 @@ async function syncRepos(): Promise<void> {
 }
 
 function download(action: string): void {
-  window.location.href = `../api/export.php?action=${action}`;
+  window.location.href = `../api/export?action=${action}`;
 }
 
 /**

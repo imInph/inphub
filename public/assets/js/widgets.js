@@ -9,10 +9,10 @@
  * payload; the few that need live behaviour (clock, capture, brief) also get a
  * mount() call after the dashboard markup is in the DOM.
  */
-import { apiGet, apiPost } from './api.js?v=42714d0ded';
-import { escapeHtml, money, fmtDate, timeAgo, markdown, toast, localDate, sparkline, } from './ui.js?v=42714d0ded';
-import { go, aiAvailable } from './app.js?v=42714d0ded';
-import { icon } from './icons.js?v=42714d0ded';
+import { apiGet, apiPost } from './api.js?v=317b34a9c2';
+import { escapeHtml, money, fmtDate, timeAgo, markdown, toast, localDate, sparkline, } from './ui.js?v=317b34a9c2';
+import { go, aiAvailable } from './app.js?v=317b34a9c2';
+import { icon } from './icons.js?v=317b34a9c2';
 /* ------------------------------------------------------------------ shell */
 export function widgetShell(id, def, size, index, body) {
     return `<section class="card widget" data-widget="${id}" data-size="${size}" style="--i:${index}">

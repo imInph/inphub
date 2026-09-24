@@ -13,11 +13,11 @@
  * (as an earlier version did) stacks handlers on a node that is never
  * replaced; see the onAction() note in CLAUDE.md for the same hazard.
  */
-import { go } from './app.js?v=42714d0ded';
-import { openChat } from './chat.js?v=42714d0ded';
-import { apiGet, apiPost } from './api.js?v=42714d0ded';
-import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=42714d0ded';
-import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=42714d0ded';
+import { go } from './app.js?v=317b34a9c2';
+import { openChat } from './chat.js?v=317b34a9c2';
+import { apiGet, apiPost } from './api.js?v=317b34a9c2';
+import { toast, openModal, formValues, escapeHtml, money } from './ui.js?v=317b34a9c2';
+import { RESULT_VIEWS, SEARCH_MIN_CHARS, fetchSuggestions, searchGoogle, suggestionHtml, isAbort, } from './web-search.js?v=317b34a9c2';
 /** Google suggestions shown under the fixed "Search Google for …" row. */
 const WEB_SUGGESTIONS = 4;
 const VIEW_COMMANDS = [
@@ -356,7 +356,7 @@ async function syncRepos() {
     }
 }
 function download(action) {
-    window.location.href = `../api/export.php?action=${action}`;
+    window.location.href = `../api/export?action=${action}`;
 }
 /**
  * Free-text capture routed by api/ai.php: with AI on the model classifies it,

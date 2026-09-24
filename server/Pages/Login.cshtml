@@ -1,0 +1,69 @@
+@page "/login"
+@model LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue" data-wallpaper="aurora" data-glass="full" data-logo="accent">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>inphub · sign in</title>
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#0b0d12">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="favicon.ico?v=@AppInfo.Version" sizes="32x32">
+    <link rel="icon" href="favicon.svg?v=@AppInfo.Version" type="image/svg+xml">
+    <link rel="icon" href="favicon-32.png?v=@AppInfo.Version" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=@AppInfo.Version">
+    <link rel="stylesheet" href="assets/css/app.css?v=@Model.CssVersion">
+    <script>
+        try {
+            var t = localStorage.getItem('inphub.theme');
+            if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            var a = JSON.parse(localStorage.getItem('inphub.appearance') || 'null');
+            if (a && typeof a === 'object') {
+                var h = document.documentElement;
+                if (a.accent) h.setAttribute('data-accent', a.accent);
+                if (a.wallpaper) h.setAttribute('data-wallpaper', a.wallpaper);
+                if (a.transparency) h.setAttribute('data-glass', a.transparency);
+                if (a.logo) h.setAttribute('data-logo', a.logo);
+                if (a.image) h.style.setProperty('--wp-image', a.image);
+            }
+        } catch (e) {}
+    </script>
+</head>
+<body class="login-body">
+    <div class="wallpaper" aria-hidden="true"></div>
+    <main class="login-card glass">
+        <div class="login-brand">
+            <span class="logo">inphub</span>
+        </div>
+        <p class="login-sub">Sign in</p>
+
+        @if (Model.Error != null)
+        {
+            <div class="login-error" role="alert">@Model.Error</div>
+        }
+
+        <form method="post" class="login-form" autocomplete="on">
+            <label>
+                <span>Username</span>
+                <input type="text" name="username" required autofocus autocomplete="username">
+            </label>
+            <label>
+                <span>Password</span>
+                <input type="password" name="password" required autocomplete="current-password">
+            </label>
+            <label class="checkbox">
+                <input type="checkbox" name="remember" value="1" checked>
+                <span>Keep me logged in</span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+        </form>
+
+        <p class="login-hint">No account? Accounts are created by hand in phpMyAdmin.</p>
+        <p class="login-version">inphub v@(AppInfo.Version)</p>
+    </main>
+</body>
+</html>

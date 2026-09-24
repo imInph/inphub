@@ -171,9 +171,9 @@ export async function renderSettings(container: HTMLElement): Promise<void> {
       <div class="card-head"><h3>Data</h3>
         <span class="text-dim" style="font-size:.82rem">Backups move between inphub and inphub lite.</span></div>
       <div class="toolbar">
-        <a class="btn" href="../api/export.php?action=backup">Export / back up…</a>
+        <a class="btn" href="../api/export?action=backup">Export / back up…</a>
         <button class="btn" data-role="import">Import…</button>
-        <a class="btn btn-ghost" href="../api/export.php?action=expenses_csv">Expenses (CSV)</a>
+        <a class="btn btn-ghost" href="../api/export?action=expenses_csv">Expenses (CSV)</a>
       </div>
       <div class="text-dim" style="margin-top:8px;font-size:.82rem">
         One .txt file with everything in this account, minus your API keys.
@@ -285,7 +285,7 @@ async function testAi(container: HTMLElement): Promise<void> {
     // Save first so the just-typed provider/key/model are what we test.
     const form = container.querySelector<HTMLFormElement>('[data-role="form"]')!;
     await save(container, form);
-    const res = await apiPost<{ ok: boolean; model?: string | null }>('settings', 'test_ai', {});
+    const res = await apiPost<{ ok: boolean; model?: string | null }>('ai', 'test_connection', {});
     result.textContent = '✓ Connected' + (res.model ? ` (${res.model})` : '') + '.';
     result.className = 'text-good';
   } catch (e) {

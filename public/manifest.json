@@ -2,7 +2,7 @@
   "name": "inphub",
   "short_name": "inphub",
   "description": "Personal life dashboard: money, tasks, habits, goals, notes, focus.",
-  "start_url": "./index.php",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

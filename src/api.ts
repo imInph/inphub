@@ -1,12 +1,12 @@
 /**
- * inphub: typed fetch wrapper around the PHP JSON API.
+ * inphub: typed fetch wrapper around the JSON API.
  *
  * Every endpoint answers with the envelope { ok: true, data } or
  * { ok: false, error }. request() unwraps it and throws on failure so callers
- * can use plain try/catch. The API lives one directory up from /public.
+ * can use plain try/catch. The API lives under /api/ on the ASP.NET server.
  */
 
-const API_BASE = '../api/';
+const API_BASE = '/api/';
 
 export interface Envelope<T> {
   ok: boolean;
@@ -22,7 +22,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Low-level request. Endpoint is the file name without ".php". */
+/** Low-level request. Endpoint is the route name under /api/, e.g. "todos". */
 async function request<T = any>(
   endpoint: string,
   action: string,
@@ -34,7 +34,7 @@ async function request<T = any>(
   for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== null && v !== '') params.set(k, String(v));
   }
-  const url = `${API_BASE}${endpoint}.php?${params.toString()}`;
+  const url = `${API_BASE}${endpoint}?${params.toString()}`;
 
   let res: Response;
   try {
@@ -47,7 +47,7 @@ async function request<T = any>(
 
   // 401 → session expired; bounce to login.
   if (res.status === 401) {
-    window.location.href = 'login.php';
+    window.location.href = 'login';
     throw new ApiError('Not authenticated.', 401);
   }
 

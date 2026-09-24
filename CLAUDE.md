@@ -5,16 +5,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 `inphub` is a personal life-dashboard (expenses, GitHub repos, todos, habits, goals, notes, focus
-sessions, activity history) with hand-created logins and an optional AI layer. It runs locally on
-XAMPP: Apache + PHP 8.2+ + MySQL/MariaDB. Plain PHP backend (no framework), TypeScript frontend
-compiled to plain ES-module JS (no React, no bundler). The owner develops and runs it locally on
-macOS: the repo is edited and built here, then copied (not symlinked) into XAMPP's
-`/Applications/XAMPP/xamppfiles/htdocs/inphub` and opened at `http://localhost/inphub/public/`.
-To test a change, rsync the changed folders into that copy, skipping `node_modules/` and never
-overwriting its `config/config.php`, then hard-reload the page (a same-hash navigation keeps the old
-JS). There is no remote server to deploy to; shipping means commit + push to GitHub. The public
-README still documents a generic (Windows) XAMPP install, so keep paths relative / `__DIR__`-based
-and filenames lowercase.
+sessions, activity history) with hand-created logins and an optional AI layer. Since v4 the backend
+is **ASP.NET Core (.NET 10, C#) in `server/`** on MySQL/MariaDB; the TypeScript frontend compiles to
+plain ES-module JS (no React, no bundler). The owner develops and runs it locally on macOS; there is
+no remote server, shipping means commit + push to GitHub.
+
+**v4 is a split backend, on purpose.** The owner reads C#, not PHP, so everything moved to C#
+except the two "hard" areas, which stay PHP until v4.1: the **AI layer** (`api/ai.php` +
+`lib/ai.php`) and the **backup format** shared with inphub lite (`lib/backup.php`, `api/import.php`,
+`api/export.php` backup only). The C# server is the only front door; it forwards `/api/ai`,
+`/api/import` and `/api/export?action=backup|json` to the PHP copy in XAMPP's
+`/Applications/XAMPP/xamppfiles/htdocs/inphub` (`Inphub:PhpApiUrl`) through the bridge described
+below. After changing any PHP, rsync the repo into that copy, skipping `node_modules/`, `server/`
+and `.git/`, and never overwriting its `config/config.php` (it holds the `bridge_key`). v4.1 ports
+the rest and removes PHP, XAMPP and the bridge; how the app is run/installed after that is still
+open (the owner wants to script it).
 
 The original specification lives in `inphub-prompt.md` (kept locally, gitignored, not in the
 public repo). **The database schema is `inphub.sql` and must
@@ -22,90 +27,134 @@ be matched exactly, never invent or alter tables/columns.** If a schema change i
 `CREATE`/`ALTER` in a dated `db/migrate-YYYY-MM-DD.sql` for existing databases AND mirror it in
 `inphub.sql` for fresh installs (see `db/migrate-2026-07-19.sql` / `chat_sessions`).
 
-The app version lives in one place: `const INPHUB_VERSION` in `lib/helpers.php` (shown in the
-sidebar, login footer, and JSON export). Bump it together with `version` in `package.json`, the
-`vX.Y.Z` line at the top of `README.md`, and the console stamp at the end of `init()` in
-`src/app.ts` (hardcoded on purpose: it proves which `app.js` the browser actually loaded).
+The app version is `AppInfo.Version` in `server/Core/AppInfo.cs` (sidebar, login footer). Bump it
+together with `INPHUB_VERSION` in `lib/helpers.php` (the backup file records it), `version` in
+`package.json`, the `vX.Y.Z` line at the top of `README.md`, and the console stamp at the end of
+`init()` in `src/app.ts` (hardcoded on purpose: it proves which `app.js` the browser actually loaded).
+
+## Writing C# here (owner's rules)
+
+The whole point of v4 is that the owner can open a file and follow it. Keep it **plain**: Minimal
+APIs, static classes, SQL written out in full through `Db` (Dapper underneath), a `switch` on the
+action. No Entity Framework, no repository/service layers, no DI ceremony, no clever LINQ chains.
+**Comments: one short line per method, nothing else** unless a line is truly baffling without one.
+No XML-doc blocks, no section banners. One file per area, named after what it serves.
 
 ## Commands
 
+- **Run the server:** `cd server && dotnet run` → `http://localhost:5080` (profile in
+  `Properties/launchSettings.json`). `dotnet build` is the compile check; there is no C# test suite.
+  Stop a stale instance with `pkill -f bin/Debug/net10.0/Inphub` before rebuilding.
 - **Build frontend:** `npm run build`, `tsc` **and then** `tools/stamp-modules.mjs`. Never run
   bare `tsc`: the stamper rewrites every compiled import to `./ui.js?v=<build id>` and writes
-  `public/assets/js/build-id.txt`, which `public/index.php` reads for the entry `<script>` URL.
-  Those two ids **must match**, if the entry is `app.js?v=A` while a module imports
+  `public/assets/js/build-id.txt`, which `server/Pages/Index.cshtml.cs` reads for the entry
+  `<script>` URL. Those two ids **must match**, if the entry is `app.js?v=A` while a module imports
   `./app.js?v=B`, the browser treats them as different modules and evaluates `app.js` twice; the
   second copy runs `init()` while `command-palette.js` is still mid-evaluation and throws
   `Cannot access 'chatEnabled' before initialization`, which kills the palette. And without any
   stamping at all, a fresh `app.js` can pair with a cached `ui.js`, where a missing export is an
-  ES-module *link* error that stops the whole app from executing, silently. `public/index.php`
+  ES-module *link* error that stops the whole app from executing, silently. The index page
   carries a `window.__inphubLoaded` guard that surfaces exactly that failure.
 - **Watch:** `npm run watch` (`tsc -w`).
-- **Lint PHP:** `php -l <file>`, there is no PHP test suite; syntax-check changed files this way.
-  `php` is not on the PATH here, use XAMPP's: `/Applications/XAMPP/xamppfiles/bin/php -l <file>`.
+- **Lint PHP:** `php -l <file>` for the PHP that is left. `php` is not on the PATH here, use
+  XAMPP's: `/Applications/XAMPP/xamppfiles/bin/php -l <file>`. After touching the backup code run
+  `php tools/backup-selftest.php`.
 - **Hash a password (to add a user by hand):** `php tools/hashpw.php "thePassword"` → paste the
-  output into an `INSERT INTO users`.
-- **No automated test framework.** Verification is manual against a running XAMPP instance.
+  output into an `INSERT INTO users`. PHP `$2y$` and .NET `$2a$` bcrypt hashes verify on both sides.
+- **No automated test framework.** Verification is manual against the running app. For backend
+  changes, compare an action's JSON between the old and new code with `jq -S` against a throwaway
+  database (import `inphub.sql` with the db name swapped), never the owner's real `inphub` db.
 
 ## Running locally
 
 1. Import `inphub.sql` (phpMyAdmin or `mysql -u root < inphub.sql`). Seeds admin `admin` / `changeme`.
-2. `cp config/config.example.php config/config.php` (DB creds only; default XAMPP values work as-is).
+2. `cp server/appsettings.Local.example.json server/appsettings.Local.json` (DB creds, `PhpApiUrl`,
+   `BridgeKey`) and `cp config/config.example.php config/config.php` with the same `bridge_key`.
+   Both are gitignored. Environment variables (`Inphub__DbName=...`) override the Local file.
 3. `npm install && npm run build` (only needed after editing `src/`; the built JS is committed).
-4. Open `http://localhost/inphub/public/` and log in.
+4. `cd server && dotnet run`, open `http://localhost:5080` and log in.
 
 The compiled JS in `public/assets/js/` (including `build-id.txt`) **is committed**, so a GitHub
-download works when copied straight into `htdocs` with no Node. It was gitignored before v2.1.2,
-and a fresh download rendered the PHP sidebar over a blank page, because the entry-module 404 fires
-no window `error` event, so the index.php banner stayed silent. `index.php` now checks for `app.js`
-server-side. **Every commit that touches `src/` must include the rebuilt output from
-`npm run build`**; the build id is a content hash, so an unchanged rebuild produces no diff.
-`config/config.php`, `node_modules/`, and the `inphub-*prompt*.md` notes are gitignored.
+download runs with no Node. It was gitignored before v2.1.2, and a fresh download rendered the
+sidebar over a blank page, because the entry-module 404 fires no window `error` event, so the
+banner stayed silent; the index page now checks for `app.js` server-side. **Every commit that
+touches `src/` must include the rebuilt output from `npm run build`**; the build id is a content
+hash, so an unchanged rebuild produces no diff. `config/config.php`,
+`server/appsettings.Local.json`, `server/bin|obj/`, `node_modules/`, and the `inphub-*prompt*.md`
+notes are gitignored. `server/.htaccess` denies Apache access to `server/`, since the Local file is
+plain JSON with the DB password and bridge key.
 
 ## Architecture
 
 ### Request/response contract (critical, app-wide)
-Every `/api/*.php` endpoint returns one envelope: success `{ "ok": true, "data": ... }`, failure
-`{ "ok": false, "error": "..." }` with a matching HTTP status. The frontend `src/api.ts` relies on
-this, never break the shape. `api/_bootstrap.php` provides the shared machinery every endpoint uses:
-- `api_handle(callable, requireAuth=true)`, starts session, enforces login, wraps the body in
-  try/catch that emits the error envelope.
-- `action($input)` / `method()`, endpoints dispatch on `?action=` (default `list` for GET).
-- `fetch_owned($table, $id, $uid)`, loads a row scoped to the owner (404 if foreign); `$table` is
-  whitelisted in `OWNED_TABLES`, never interpolated from user input.
-- `valid_enum()`, sanitises ENUM columns coming from the client.
-- `ok()` / `fail()` / `json_response()` live in `lib/helpers.php`.
+Every `/api/*` endpoint, C# or PHP, returns one envelope: success `{ "ok": true, "data": ... }`,
+failure `{ "ok": false, "error": "..." }` with a matching HTTP status. The frontend `src/api.ts`
+(which calls `/api/<name>?action=`) relies on this, never break the shape. In C#:
+- `Api.Handle(handler)` / `Api.HandleAsync` (`server/Core/Api.cs`) read the input, enforce login
+  (401), and turn the handler's return value into the envelope. `throw Api.Fail("msg", status)`
+  is the error path (like PHP's `fail()`); any other exception becomes a 500 envelope. A handler
+  that returns an `IResult` (downloads) is sent as-is.
+- `Req.Action` is `?action=` or the body's `action` (default `list` for GET). Endpoints `switch`
+  on it. `Input` merges query + JSON body (body wins) and converts values the forgiving way PHP
+  did: `Str()` (trimmed or null), `Int()`, `IntOrNull()`, `NumOrNull()`, `Bool()`, and
+  `StrIfSent()`/`IntIfSent()`/`NumIfSent()` for partial updates (key absent = keep current).
+- `Api.FetchOwned(table, id, uid)` loads a row scoped to the owner (404 if foreign); the table is
+  whitelisted, never interpolated from user input. `Api.ValidEnum()` sanitises ENUM values.
 
-**Gotcha:** `api_handle()` runs the request synchronously at its call site, and PHP does NOT hoist
-top-level `const` (only `function`). Any `const` an endpoint's handler needs must be defined ABOVE
-the `api_handle(...)` call, or it won't exist when the handler runs.
+**JSON must stay byte-compatible with what the PHP returned**, because the frontend was written
+against it. `Db.Rows()` / `Db.Row()` return `Dictionary<string, object?>` rows with the column
+names as keys and PDO's value shapes: `DECIMAL` as a **string** (`"12.50"`), `DATE` as
+`"Y-m-d"`, `DATETIME`/`TIMESTAMP` as `"Y-m-d H:i:s"`, `TINYINT(1)` as `0/1` (the connection sets
+`TreatTinyAsBoolean=false`). Never add a camelCase naming policy; response objects use snake_case
+property names (`new { current_value = … }`). Where the PHP cast to float/int, use
+`Stats.Number()` / `Convert.ToInt32()`. (XAMPP's PHP printed floats at 17 digits, .NET prints the
+shortest form; same number, not a bug.) Dates: `DateTime.Now` / `AppInfo.Today()`, the Mac's
+zone, which MySQL's `NOW()` also uses. (XAMPP's PHP ran on Europe/Berlin, an hour off.)
+
+**PHP gotcha (ai.php):** `api_handle()` runs the request synchronously at its call site, and PHP
+does NOT hoist top-level `const` (only `function`). Any `const` a handler needs must be defined
+ABOVE the `api_handle(...)` call.
+
+### The PHP bridge (v4 only, `server/Core/PhpBridge.cs` ↔ `lib/auth.php`)
+`PhpBridge.Forward()` (YARP's `IHttpForwarder`) sends the request to `<PhpApiUrl><file>.php` with
+`X-Inphub-User: <uid>` and `X-Inphub-Key: <BridgeKey>`, drops the browser's cookies on the way
+in and PHP's `Set-Cookie` on the way out. PHP has **no sessions or logins any more**:
+`auth_boot()` only sets the user when `bridge_user_id()` sees the exact `bridge_key` from
+`config/config.php` on a request from 127.0.0.1/::1; everything else is unauthenticated (401).
+An empty key disables the bridge (the server answers 503 with a hint). Settings' "Test AI" button
+calls `ai?action=test_connection` (ungated, next to `status`).
 
 ### Data isolation
-This is multi-account. **Every query is scoped to `current_user_id()`** and mutations go through
-prepared statements only (no string-interpolated SQL, ever). A user only ever sees their own rows.
-Rows referenced by id from the client (e.g. `linked_todo_id`) are ownership-checked via
-`fetch_owned()` before use.
+This is multi-account. **Every query is scoped to the current user id** (`req.Uid` in C#,
+`current_user_id()` in PHP) and goes through parameters only (`@uid`, no string-interpolated SQL,
+ever; the only interpolations are whitelisted table/column names and clamped `LIMIT` ints). A user
+only ever sees their own rows. Rows referenced by id from the client (e.g. `linked_todo_id`) are
+ownership-checked via `FetchOwned()` before use.
 
-### Auth (`lib/auth.php`)
-Session-based. `auth_boot()` starts the session and, when there is none, silently re-establishes it
-from a remember-me cookie: a random token whose **SHA-256 hash** is stored in `remember_tokens`
-(raw token only in an httponly/SameSite=Lax cookie), rotated on each use. Guards: `require_login()`
-(401 JSON, for API), `require_login_page()` (redirect, for HTML pages), `require_role('admin')`.
-There is no registration, accounts are inserted by hand. `current_user()` never selects
-`password_hash`.
+### Auth (`server/Auth/AuthService.cs`)
+ASP.NET cookie authentication (`inphub4_session`, claims `uid` + role) plus remember-me: a random
+token whose **SHA-256 hash** is stored in `remember_tokens` (raw token only in an
+httponly/SameSite=Lax cookie), rotated on each use by the middleware in `Program.cs`. The cookie
+is `inphub4_remember`, **not** `inphub_remember`: cookies ignore the port, so sharing the name with
+the old PHP app on :80 made the two rotate each other's token. Login is the Razor page
+`Pages/Login.cshtml` (+ `/api/auth?action=login` for JSON), `/logout` ends both. Admin checks read
+the role from the database, not the cookie. There is no registration, accounts are inserted by
+hand. `CurrentUser()` never selects `password_hash`.
 
-### First-login provisioning (`lib/provision.php`)
-`provision_user($id)` seeds default settings / expense categories / habits the first time a
+### First-login provisioning (`server/Auth/Provisioning.cs`)
+`Provisioning.Run(uid)` seeds default settings / expense categories / habits the first time a
 hand-added user logs in. **These defaults mirror the seed block in `inphub.sql` for user 1**, if you
 change one, change both so a fresh account matches user 1.
 
-### Settings & secrets (`api/settings.php`)
+### Settings & secrets (`server/Endpoints/SettingsApi.cs`)
 Per-user key/value in the `settings` table (theme, currency, GitHub + AI config). Writable keys are
-whitelisted (`ALLOWED_SETTING_KEYS`). Secret keys (`github_token`, `claude_api_key`) are masked on
-read (`mask_secret()`); on save, a value equal to the `SECRET_UNCHANGED` sentinel means "keep the
-stored value" so the mask never overwrites the real secret. Saving `ai_enabled = '0'` also deletes
-the user's stored daily briefs.
+whitelisted (`AllowedKeys`). Secret keys (`github_token`, `claude_api_key`, `lmstudio_api_key`) are
+masked on read (`Settings.MaskSecret()`); on save, a value equal to `Settings.SecretUnchanged`
+means "keep the stored value" so the mask never overwrites the real secret. The whole request is
+validated before anything is written. Saving `ai_enabled` to anything but `'1'` also deletes the
+user's stored daily briefs.
 
-### AI layer (`lib/ai.php` + `api/ai.php`), optional, provider-agnostic
+### AI layer (`lib/ai.php` + `api/ai.php`, still PHP until v4.1), optional, provider-agnostic
 Off by default. `ai_available($uid)` is the ONE canonical gate for every AI feature; in `api/ai.php`
 `ai_gate()` applies it (403) to every action except `status` and `quick_add`. `ai_generate($uid,
 $system, $prompt, $opts)` reads the user's settings and dispatches to **Claude** (`/v1/messages`),
@@ -174,7 +223,7 @@ Repo AI analysis is cached: within `AI_ANALYZE_COOLDOWN_HOURS` it serves
 existing `repo_suggestions` (freshness derived from `MAX(created_at)`, no schema column), and a
 garbled model reply must never delete previous suggestions.
 
-### Backup / restore (`lib/backup.php`, `api/import.php`, `api/export.php`)
+### Backup / restore (`lib/backup.php`, `api/import.php`, `api/export.php`, still PHP until v4.1)
 `BACKUP-FORMAT.md` is the contract, and **an identical copy lives in the inphub-lite
 repo**. Both apps read and write the same `.txt`, so a change here without the matching
 change there breaks the migration path in one direction only, which is the hardest kind
@@ -193,12 +242,14 @@ numbers and `YYYY-MM-DDTHH:mm:ss`. Mixing the two datetime forms in one table br
 `github_token`, `claude_api_key` and `lmstudio_api_key` are never written to a file.
 
 ### Activity log
-`log_activity(...)` in `lib/activity.php` records meaningful mutations (actor `user`/`ai`/`system`).
+`Activity.Log(...)` (`server/Core/Activity.cs`, and `log_activity()` in `lib/activity.php` for
+the PHP side) records meaningful mutations (actor `user`/`ai`/`system`). Money summaries always
+carry units via `Money.Text()` (`"130.00 TRY"`).
 The dashboard, daily brief, and weekly review read from this timeline.
 
-### GitHub sync (`api/sync_repos.php` + `lib/github.php`)
+### GitHub sync (`server/Endpoints/SyncRepos.cs` + `server/Services/GitHub.cs`)
 Pulls repos via the GitHub REST API, upserts on `(user_id, full_name)`, fetches README excerpt +
-license, then computes `staleness_days` and a 0–100 `health_score` (`repo_health_score()`: README /
+license, then computes `staleness_days` and a 0–100 `health_score` (`GitHub.HealthScore()`: README /
 LICENSE / description / push recency / low issue backlog).
 
 ### Routing and deep links (`src/app.ts`)
@@ -213,22 +264,21 @@ DOM and would drop the highlight; `activate()` clears them on the next real navi
 **When a view's own filter hides the focused row, widen it**, todos drops to "All", money to "All
 time", otherwise a search jump looks like it did nothing.
 
-### Global search (`api/search.php`)
-Six groups, all scoped to `current_user_id()`. Escape the user's text with `like_escape()` and
+### Global search (`server/Endpoints/Search.cs`)
+Six groups, all scoped to the user. Escape the user's text with `LikeEscape()` and
 carry `ESCAPE '!'` on **every** `LIKE`: unescaped, `%` matches everything, and backslash escaping
-breaks under `NO_BACKSLASH_ESCAPES`. `LIMIT` is an interpolated clamped int (PDO runs with
-`EMULATE_PREPARES => false`, so a bound LIMIT arrives quoted and MySQL rejects it) and each group
+breaks under `NO_BACKSLASH_ESCAPES`. `LIMIT` is an interpolated clamped int and each group
 fetches limit+1 to know whether more exist. Always end `ORDER BY` with `id DESC` or tied rows
 reshuffle between keystrokes. The collation (`utf8mb4_unicode_ci`) already matches `İSTANBUL` ↔
 `istanbul` ↔ `ıstanbul`, do not "fix" it to `utf8mb4_turkish_ci`, and never re-filter results
 client-side, since JS `toLowerCase()` gets Turkish wrong where the DB gets it right.
 
-### Google suggestions (`api/suggest.php` + `src/web-search.ts`)
-The dashboard bar (`src/dash-search.ts`: a Google group, then "In inphub" from search.php) and
+### Google suggestions (`server/Endpoints/Suggest.cs` + `src/web-search.ts`)
+The dashboard bar (`src/dash-search.ts`: a Google group, then "In inphub" from search) and
 the palette's Google group both use `fetchSuggestions()` in `web-search.ts`, which also holds the
 shared `RESULT_VIEWS` / search types. Suggestions are proxied server-side because Google's suggest
 endpoint sends no CORS headers. A slow or failing Google is **never** an error: the endpoint answers
-`ok(['items' => []])` and the UI just shows fewer rows, so keep its short cURL timeouts.
+`{ items: [] }` and the UI just shows fewer rows, so keep its short HTTP timeout (3 s).
 
 **Entry animations on containers use fill mode `backwards`, never `both`** (`.view`, dashboard
 widgets): a filled opacity/transform animation keeps the element isolated after it ends, so
@@ -237,22 +287,22 @@ An element with its own `backdrop-filter` isolates its contents the same way, so
 (`.modal-backdrop`, `.palette`) puts its tint + blur on a `::before` layer, never on the element
 that contains the glass box.
 
-### Insights (`api/insights.php` + `src/insights.ts`)
+### Insights (`server/Endpoints/Insights.cs` + `src/insights.ts`)
 One `?action=summary&period=` call feeds the whole view; nothing is stored. It reuses
-`money_window()`, the name is historical, the maths is generic, so Insights and Money share one
+`Money.Window()`, the name is historical, the maths is generic, so Insights and Money share one
 period vocabulary. Two details to preserve: `WEEKDAY()` is 0=Monday (unlike `DAYOFWEEK()`, which
 starts Sunday) and the frontend derives its labels by walking a known Monday so they stay
-localised; and `insights_fill()` zero-fills each series exactly like `expense_series_fill()` in
-stats.php, so a chart draws a timeline instead of a list of days that happened to have data.
+localised; and every series is zero-filled by `Stats.SeriesFill()` (the same one the Money chart
+uses), so a chart draws a timeline instead of a list of days that happened to have data.
 Chart colours are read from the CSS custom properties at draw time, so charts follow the
 light/dark switch; every chart instance is destroyed before a redraw.
 
 ### Dashboard widgets (`src/widgets.ts`, `src/dashboard.ts`, `src/widget-picker.ts`)
 Every widget is an entry in `WIDGETS` (widgets.ts), and its id **must also be in
-`DASHBOARD_WIDGETS` in `lib/helpers.php`**: `normalise_dashboard_layout()` drops unknown ids on
+`Appearance.DashboardWidgets` in `server/Core/Appearance.cs`**: `NormaliseLayout()` drops unknown ids on
 save, so a TS-only widget can never be kept. The user's layout is the `dashboard_widgets` setting
 (`[{id, size:'normal'|'wide'}]`, enabled widgets only, in order); unset means every widget in
-default order. All widgets render from the one `stats.php?action=dashboard` payload; the few with
+default order. All widgets render from the one `stats?action=dashboard` payload; the few with
 live behaviour get `mount()` after insertion (the clock uses one module-wide interval that looks
 nodes up each tick, never captured ones). Masonry packing is `masonry()` in dashboard.ts: a 4px
 `grid-auto-rows` grid where each widget spans rows from its `.widget-inner` height, then a second
@@ -264,14 +314,14 @@ the dashboard DOM.
 ### Appearance ("Glass" design system)
 `<html>` carries `data-theme`, `data-accent`, `data-wallpaper`, `data-glass` (full|reduced) and
 `data-logo` (accent|wallpaper: where the sidebar/login `.logo` badge gets its gradient; plain and
-custom wallpapers have no palette, so the Settings toggle locks to accent there and `api/settings.php`
-/ `ui_appearance()` force `ui_logo_tint` to `accent`), plus `--wp-image` for a custom wallpaper. Settings keys
+custom wallpapers have no palette, so the Settings toggle locks to accent there and `SettingsApi`
+/ `Appearance.For()` force `ui_logo_tint` to `accent`), plus `--wp-image` for a custom wallpaper. Settings keys
 `ui_accent` / `ui_wallpaper` / `ui_wallpaper_url` / `ui_transparency` / `ui_logo_tint` are
-whitelisted and validated in `api/settings.php` against `UI_ACCENTS` / `UI_WALLPAPERS` /
-`UI_TRANSPARENCY` / `UI_LOGO_TINTS` / `is_http_url()` in `lib/helpers.php`; `ui_appearance()` gives
-index.php the server values, and a stored URL only reaches CSS through `css_url()` (PHP) / `cssUrl()`
-(app.ts). Like the theme, the last saved look is cached in `localStorage['inphub.appearance']` and
-applied by the pre-paint scripts in index.php and login.php; always go through `applyTheme()` /
+whitelisted and validated in `SettingsApi` against the lists in `server/Core/Appearance.cs` and
+`Appearance.IsHttpUrl()`; `Appearance.For()` gives the index page the server values, and a stored
+URL only reaches CSS through `Appearance.CssUrl()` (C#) / `cssUrl()` (app.ts). Like the theme, the
+last saved look is cached in `localStorage['inphub.appearance']` and applied by the pre-paint
+scripts in `Pages/Index.cshtml` and `Pages/Login.cshtml`; always go through `applyTheme()` /
 `applyAppearance()` in app.ts, which keep that cache in sync (Settings previews call them with
 `remember=false`). In app.css, keep every v2 token name (`--bg`, `--bg-elev`, `--card`, `--border`,
 `--text-dim`, `--accent`, …): inline styles use them and the charts read `--accent/--good/--warn/--bad/
@@ -285,10 +335,10 @@ render their own `<h2>`.
 ### Frontend (`src/`)
 `app.ts` is the SPA shell (hash routing, lazy per-view data load, theme, clock, keyboard shortcuts,
 mobile drawer nav). Each view module (`todos.ts`, `expenses.ts`, …) exposes a render entry point
-mounted into its `#view-<id>` section in `public/index.php`. `ui.ts` holds toasts/modals/
+mounted into its `#view-<id>` section in `server/Pages/Index.cshtml`. `ui.ts` holds toasts/modals/
 formatting and `markdown()`. Chart.js, marked (+ marked-footnote) and DOMPurify are vendored in
-`public/assets/vendor/` (committed, loaded by `defer` tags in index.php, used as globals; refresh
-them with `npm install && npm run vendor`, then update the file names in index.php).
+`public/assets/vendor/` (committed, loaded by `defer` tags in `Pages/Index.cshtml`, used as
+globals; refresh them with `npm install && npm run vendor`, then update the file names there).
 
 `markdown(src, {embeds, tasks})` is marked (GFM, breaks, footnotes) → DOMPurify → a DOM pass. Its
 output renders notes, chat, the brief, the weekly review and **GitHub READMEs**, so keep the
@@ -308,7 +358,7 @@ Conventions that prevent recurring bugs:
   function, and never capture child nodes across renders (query the live container instead, see
   `focus.ts`).
 - **Topbar/drawer chrome (theme button, hamburger, nav backdrop) is wired through inline `onclick`
-  attributes in `index.php`** calling `window.inphubToggleTheme` / `window.inphubDrawer`, which
+  attributes in `Pages/Index.cshtml`** calling `window.inphubToggleTheme` / `window.inphubDrawer`, which
   `app.ts` `init()` exposes. This is deliberate and must stay: in the owner's environment (Firefox,
   desktop + mobile) BOTH direct `addEventListener` bindings AND a document-level delegated click
   listener silently never fired for these buttons, likely an extension wrapping `addEventListener`,
@@ -320,17 +370,21 @@ Conventions that prevent recurring bugs:
   `addEventListener` **and** the DOM level-0 `document.onkeydown` slot, stamping the event so
   whichever fires second is a no-op, same reason as the inline-onclick note above, plus Firefox
   refuses to give a page `Ctrl/Cmd+K` at all (hence bare `k`).
-- **Dates:** the server compares in *local* time (`date('Y-m-d')`). Use `localDate()` /
+- **Dates:** the server compares in *local* time (`AppInfo.Today()`). Use `localDate()` /
   `localDateTime()` / `todayStr()` from `ui.ts`; never `toISOString()` (UTC, wrong day near
   midnight).
 - All user data interpolated into HTML goes through `escapeHtml()` (or `markdown()`).
 - Theme: `data-theme` on `<html>`, cached in `localStorage['inphub.theme']` with pre-paint scripts
-  in `index.php` and `login.php`; the `settings` table stays the source of truth.
+  in the Index and Login pages; the `settings` table stays the source of truth.
 - AI visibility: `refreshAiAvailability()` in `app.ts` re-checks `ai?action=status` and
   shows/hides every AI entry point (chat button, palette entry, brief), Settings calls it after a
   save so toggling AI needs no reload.
 
 ## Layout
-`config/` DB creds · `db/database.php` PDO singleton + `migrate-*.sql` · `lib/` shared backend ·
-`api/` JSON endpoints (all guarded) · `public/` web root (shell, login, compiled assets) · `src/`
-TS source · `tools/` CLI helpers.
+`server/` the ASP.NET app: `Program.cs` wiring · `Core/` Db, Api, Input, Settings, Money,
+Appearance, Activity, PhpBridge · `Auth/` login, remember-me, provisioning · `Endpoints/` one
+file per `/api/<name>` · `Services/` GitHub · `Pages/` Index + Login (Razor). `public/` web root
+(compiled assets, css, icons; served by the server as static files, `*.php` never) · `src/` TS
+source · `api/` + `lib/` the PHP left for v4 (ai, import, export-backup, backup, helpers,
+auth = bridge check) · `config/` PHP config · `db/` PDO singleton + `migrate-*.sql` · `tools/`
+CLI helpers + backup tests.

@@ -1,10 +1,10 @@
 <?php
 /**
- * inphub: common bootstrap for every /api endpoint.
+ * inphub: common bootstrap for the PHP endpoints left in v4 (ai.php, import.php).
  *
- * Starts the session (honouring remember-me), wires the shared libs, and, for
- * everything except the auth endpoint, requires an authenticated user. Wrap the
- * endpoint body in api_handle() so any thrown error becomes a clean JSON error.
+ * Reads the user from the ASP.NET bridge headers (see lib/auth.php), wires the
+ * shared libs, and requires an authenticated user. Wrap the endpoint body in
+ * api_handle() so any thrown error becomes a clean JSON error.
  */
 
 declare(strict_types=1);

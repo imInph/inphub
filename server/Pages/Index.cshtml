@@ -1,0 +1,130 @@
+@page "/"
+@model IndexModel
+@{
+    Layout = null;
+    string[] vendorLibs = ["marked-18.0.13.umd.js", "marked-footnote-1.4.0.umd.js", "purify-3.4.15.min.js"];
+    var chartSrc = "assets/vendor/chart-4.4.1.min.js";
+}
+<!DOCTYPE html>
+<html lang="en" data-theme="@Model.Theme"
+      data-accent="@Model.Look.accent"
+      data-wallpaper="@Model.Look.wallpaper"
+      data-glass="@Model.Look.transparency"
+      data-logo="@Model.Look.logo_tint"
+      style="@(Model.WallpaperStyle == "" ? null : Model.WallpaperStyle)">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>inphub</title>
+    <meta name="description" content="Personal life dashboard: money, tasks, habits, goals, notes, focus.">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="@(Model.Theme == "light" ? "#f4f6fa" : "#0b0d12")">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="inphub">
+    <link rel="icon" href="favicon.ico?v=@AppInfo.Version" sizes="32x32">
+    <link rel="icon" href="favicon.svg?v=@AppInfo.Version" type="image/svg+xml">
+    <link rel="icon" href="favicon-32.png?v=@AppInfo.Version" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=@AppInfo.Version">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="assets/css/app.css?v=@Model.CssVersion">
+    <script src="@chartSrc?v=@Model.FileVersion(chartSrc)" defer></script>
+    @foreach (var lib in vendorLibs)
+    {
+        <script src="assets/vendor/@lib?v=@Model.FileVersion("assets/vendor/" + lib)" defer></script>
+    }
+    <script>window.INPHUB = @Html.Raw(Model.BootJson);</script>
+    <script>
+        try {
+            var t = localStorage.getItem('inphub.theme');
+            if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+            var a = JSON.parse(localStorage.getItem('inphub.appearance') || 'null');
+            if (a && typeof a === 'object') {
+                var h = document.documentElement;
+                if (a.accent) h.setAttribute('data-accent', a.accent);
+                if (a.wallpaper) h.setAttribute('data-wallpaper', a.wallpaper);
+                if (a.transparency) h.setAttribute('data-glass', a.transparency);
+                if (a.logo) h.setAttribute('data-logo', a.logo);
+                if (a.image) h.style.setProperty('--wp-image', a.image);
+                else h.style.removeProperty('--wp-image');
+            }
+        } catch (e) {}
+    </script>
+</head>
+<body>
+    <div class="wallpaper" aria-hidden="true"></div>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="logo">inphub</span>
+                <span class="brand-version">v@(AppInfo.Version)</span>
+            </div>
+            <nav class="nav">
+                @foreach (var (id, label, key) in IndexModel.Nav)
+                {
+                    <a href="#@id" class="nav-item" data-view="@id" data-key="@key">
+                        @IndexModel.Icon(id)<span class="nav-label">@label</span>
+                    </a>
+                }
+            </nav>
+            <div class="sidebar-foot">
+                <button class="btn btn-ghost nav-item" id="btn-chat" hidden>@IndexModel.Icon("chat")<span class="nav-label">Chat</span></button>
+                <button class="btn btn-ghost nav-item" id="btn-palette" title="Press K (or Ctrl/Cmd+K)"
+                        onclick="window.inphubPalette&&window.inphubPalette()">@IndexModel.Icon("search")<span class="nav-label">Search</span><kbd>K</kbd></button>
+                <a class="btn btn-ghost nav-item" href="logout">@IndexModel.Icon("logout")<span class="nav-label">Log out</span></a>
+            </div>
+        </aside>
+        <div class="nav-backdrop" id="nav-backdrop" hidden
+             onclick="window.inphubDrawer&&window.inphubDrawer(false)"></div>
+
+        <main class="main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="btn btn-ghost btn-icon hamburger" id="btn-nav" aria-label="Open menu"
+                            onclick="window.inphubDrawer&&window.inphubDrawer()">@IndexModel.Icon("menu")</button>
+                    <div class="title-block">
+                        <div id="greeting" class="greeting"></div>
+                        <h1 id="page-title" class="page-title">Dashboard</h1>
+                    </div>
+                </div>
+                <div class="topbar-right">
+                    <div id="clock" class="clock"></div>
+                    <button class="btn btn-ghost btn-icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme"
+                            onclick="window.inphubToggleTheme&&window.inphubToggleTheme()">@IndexModel.Icon("theme")</button>
+                </div>
+            </header>
+
+            @foreach (var (id, label, _) in IndexModel.Nav)
+            {
+                <section id="view-@id" class="view" hidden aria-label="@label"></section>
+            }
+        </main>
+    </div>
+
+    <div id="chat-panel" class="chat-panel" hidden></div>
+    <div id="palette" class="palette" hidden></div>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <script>
+        window.addEventListener('error', function (e) {
+            if (e && e.message && /module|import|export/i.test(e.message) && !window.__inphubLoaded) {
+                var b = document.createElement('div');
+                b.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:999;padding:12px 16px;'
+                    + 'background:#ef4444;color:#fff;font:14px system-ui;text-align:center';
+                b.textContent = 'inphub could not load its scripts. Hard-reload the page '
+                    + '(Cmd/Ctrl+Shift+R) to clear a stale cached module.';
+                document.body.appendChild(b);
+            }
+        });
+    </script>
+    @if (Model.HasAppJs)
+    {
+        <script type="module" src="assets/js/app.js?v=@Model.JsVersion"></script>
+    }
+    else
+    {
+        <div style="position:fixed;inset:auto 0 0 0;z-index:999;padding:12px 16px;background:#ef4444;color:#fff;font:14px system-ui;text-align:center">
+            inphub's JavaScript is missing (public/assets/js/app.js). Run <code>npm install &amp;&amp; npm run build</code>.
+        </div>
+    }
+</body>
+</html>
